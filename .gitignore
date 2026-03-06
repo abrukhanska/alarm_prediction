@@ -45,6 +45,8 @@ cover/
 *.mo
 *.pot
 
+*.log
+
 .ipynb_checkpoints
 
 profile_default/
@@ -85,6 +87,9 @@ data/raw/isw_reports/html/*
 data/raw/isw_reports/text/*
 !data/raw/isw_reports/text/.gitkeep
 
+data/raw/isw_sources/*
+!data/raw/isw_sources/.gitkeep
+
 data/raw/weather/historical/*
 !data/raw/weather/historical/.gitkeep
 
@@ -107,4 +112,5 @@ data/*.xlsx
 
 logs/*
 !logs/.gitkeep
-*.log
+
+test_data/
