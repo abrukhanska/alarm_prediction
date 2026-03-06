@@ -10,12 +10,12 @@ We integrate multiple sources to create a comprehensive dataset for air raid ale
 
 - **ISW Reports**  
   HTML text, collected by `isw_scraper.py`.  
-  Volume: ~1460 reports.  
+  Volume: 1,467 reports (covers 2022-2026, accounting for known structural "Christmas gaps").  
   *(Mandatory)*
 
 - **ISW Sources**  
   URLs and titles, collected by `isw_sources_scraper.py`.  
-  Volume: ~15K references.  
+  Volume: 21,603 total references (~60% Telegram dominance).
   *(Mandatory)*
 
 - **Weather Forecast**  
