@@ -24,23 +24,35 @@ def get_alarm_summary():
     data = get_all_alarms()
     if "error" in data:
         return data
-    alerts = data.get("alerts", [])
-    active_regions = set()
-    for alert in alerts:
-        oblast_name = alert.get("location_oblast")
 
-        if oblast_name:
-            active_regions.add(oblast_name)
-    active_regions = list(active_regions)
+    alerts = data.get("alerts", [])
+    active_regions = {}
+
+    for alert in alerts:
+        oblast = alert.get("location_oblast")
+
+        if oblast and oblast not in active_regions:
+            a_type = alert.get("alert_type", "unknown")
+            started = alert.get("started_at", "")
+            time_str = started[11:16] if len(started) > 16 else started
+            active_regions[oblast] = {
+                "type": a_type,
+                "since": time_str
+            }
     return {
         "active_count": len(active_regions),
-        "regions": active_regions
+        "regions_data": active_regions
     }
+
 if __name__ == "__main__":
     summary = get_alarm_summary()
+
     print("CURRENT ALARMS")
     if "error" in summary:
         print(f"Помилка: {summary['error']}")
     else:
+        for region, details in summary["regions_data"].items():
+            print(f"{region} | {details['type']} | since {details['since']}")
+
+        print("-" * 30)
         print(f"Active: {summary['active_count']}/25 regions")
-        print(f"Регіони: {', '.join(summary['regions'])}")
