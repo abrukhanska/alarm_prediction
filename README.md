@@ -147,6 +147,4 @@ alarm_prediction/
 ---
 
 ## Project Resources
-
-- **GitHub Repository**: [https://github.com/abrukhanska/alarm_prediction](https://github.com/abrukhanska/alarm_prediction)
 - **Project Data and Documentation**: [Google Drive](https://drive.google.com/drive/folders/1B8GYn1JL5meLz7me79VUDsR2iXmvvB1-)
