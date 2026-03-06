@@ -1,14 +1,8 @@
-# ==============================================================================
-# ALARM PREDICTION SYSTEM — .gitignore
-# ==============================================================================
-
-# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 
-# ── Distribution / packaging ─────────────────────────────────────────────────
 .Python
 build/
 develop-eggs/
@@ -28,15 +22,12 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# ── PyInstaller ──────────────────────────────────────────────────────────────
 *.manifest
 *.spec
 
-# ── Installer logs ───────────────────────────────────────────────────────────
 pip-log.txt
 pip-delete-this-directory.txt
 
-# ── Testing ──────────────────────────────────────────────────────────────────
 htmlcov/
 .tox/
 .nox/
@@ -51,18 +42,14 @@ coverage.xml
 .pytest_cache/
 cover/
 
-# ── Translations ─────────────────────────────────────────────────────────────
 *.mo
 *.pot
 
-# ── Jupyter Notebook ─────────────────────────────────────────────────────────
 .ipynb_checkpoints
 
-# ── IPython ──────────────────────────────────────────────────────────────────
 profile_default/
 ipython_config.py
 
-# ── Environments ─────────────────────────────────────────────────────────────
 .env
 .envrc
 .venv
@@ -72,7 +59,6 @@ ENV/
 env.bak/
 venv.bak/
 
-# ── IDE ──────────────────────────────────────────────────────────────────────
 .idea/
 .vscode/
 *.swp
@@ -82,7 +68,6 @@ venv.bak/
 .spyproject
 .ropeproject
 
-# ── Type checkers ────────────────────────────────────────────────────────────
 .mypy_cache/
 .dmypy.json
 dmypy.json
@@ -90,53 +75,36 @@ dmypy.json
 .pytype/
 .ruff_cache/
 
-# ── OS files ─────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# ==============================================================================
-# DATA — CRITICAL! Do NOT commit data files. Penalty: -10 points.
-# ==============================================================================
-# Raw data files are large and MUST NOT be committed to Git.
-# Directory structure is preserved via .gitkeep placeholder files.
-# ==============================================================================
-
-# ── ISW reports ──────────────────────────────────────────────────────────────
 data/raw/isw_reports/html/*
 !data/raw/isw_reports/html/.gitkeep
 
 data/raw/isw_reports/text/*
 !data/raw/isw_reports/text/.gitkeep
 
-# ── Weather data ─────────────────────────────────────────────────────────────
 data/raw/weather/historical/*
 !data/raw/weather/historical/.gitkeep
 
 data/raw/weather/forecast/*
 !data/raw/weather/forecast/.gitkeep
 
-# ── Air raid alarm data ──────────────────────────────────────────────────────
 data/raw/alarms/*
 !data/raw/alarms/.gitkeep
 
-# ── War events ───────────────────────────────────────────────────────────────
 data/raw/war_events/*
 !data/raw/war_events/.gitkeep
 
-# ── Processed data ───────────────────────────────────────────────────────────
 data/processed/*
 !data/processed/.gitkeep
 
-# ── Catch-all for data root ──────────────────────────────────────────────────
 data/*.csv
 data/*.json
 data/*.parquet
 data/*.xlsx
 
-# ==============================================================================
-# LOGS
-# ==============================================================================
 logs/*
 !logs/.gitkeep
 *.log
