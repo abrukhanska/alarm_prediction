@@ -1,6 +1,6 @@
 """
 ISW NLP Pipeline
-Reads already (500 features, fit on TRAIN only, no leakage).
+Reads raw texts, filters stop-words/noise, and builds a 500-feature TF-IDF matrix.
 Creates alarm_date = D+1 mapping for merge.
 """
 import argparse
@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import scipy.sparse
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROCESSED    = PROJECT_ROOT / "data" / "processed"
@@ -74,12 +74,28 @@ def build_ml_tfidf(
     print(f"  features: {TFIDF_FEATURES} (vs 5000 in EDA processor)")
     print(f"  NOTE: TRAIN_CUTOFF must match split date in train_models.py (Task 4)")
 
+    custom_stop_words = list(ENGLISH_STOP_WORDS.union({
+        "click", "com", "dot", "html", "http", "https", "www", "org",
+        "interactive", "map", "time", "lapse", "isw", "ability", "able",
+        "access", "additional", "activities", "activity", "area", "areas",
+        "available", "continue", "continued", "continues", "continuing",
+        "day", "days", "did", "does", "efforts", "elements", "events",
+        "including", "information", "likely", "make", "new", "note",
+        "noted", "observed", "ongoing", "past", "percent", "provided",
+        "published", "recent", "recently", "report", "reported",
+        "reportedly", "reporting", "reports", "shows", "significant",
+        "source", "sources", "stated", "support", "today", "january",
+        "february", "march", "april", "may", "june", "july", "august",
+        "september", "october", "november", "december",
+        "000", "1st", "2nd", "3rd", "2022", "2023", "2024", "2025"
+    }))
+
     vectorizer = TfidfVectorizer(
         max_features=TFIDF_FEATURES,
-        stop_words="english",
+        stop_words=custom_stop_words,
         ngram_range=(1, 2),
         min_df=5,
-        max_df=0.9,
+        max_df=0.85,
         sublinear_tf=True,
         token_pattern=r"(?u)\b[a-zA-Z0-9]{3,}\b",
     )
@@ -104,15 +120,12 @@ def build_merge_features(df: pd.DataFrame) -> pd.DataFrame:
 
     cols_for_model = [
         "date",
-        "isw_report_length",
-        "isw_sources_count",
-        "attack_mentions",
-        "ground_mentions",
-        "casualty_mentions",
-        "total_intensity",
-        "intensity_per_1000",
-        "unique_domains",
+        "isw_report_length", "word_count", "sentence_count", "paragraph_count",
+        "avg_sentence_length", "isw_sources_count", "sources_resolved",
+        "sources_dead", "sources_blocked", "unique_domains", "attack_mentions",
+        "ground_mentions", "casualty_mentions", "total_intensity", "intensity_per_1000"
     ]
+
     available = [c for c in cols_for_model if c in df.columns]
     dropped   = [c for c in cols_for_model if c not in df.columns]
     if dropped:
