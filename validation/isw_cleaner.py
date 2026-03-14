@@ -56,9 +56,12 @@ TFIDF_MAX_FEATURES = 5000
 TFIDF_MIN_DF       = 5
 TFIDF_MAX_DF       = 0.95
 
+def _normalize_weapons(text: str) -> str:
+    return re.sub(r'(?<=[a-zA-Z0-9])-(?=[0-9])', '', text)
 
 def _count_keywords(text: str, keywords: frozenset) -> int:
-    words = re.findall(r'\b\w+\b', text.lower())
+    clean_text = _normalize_weapons(text.lower())
+    words = re.findall(r'\b[a-zA-Z0-9]{3,}\b', clean_text)
     return sum(1 for w in words if w in keywords)
 
 def load_texts() -> tuple[pd.DataFrame, dict[str, str], list[str]]:
@@ -77,7 +80,7 @@ def load_texts() -> tuple[pd.DataFrame, dict[str, str], list[str]]:
         print(f"ERROR: no files in {ISW_TEXT_DIR}")
         sys.exit(1)
 
-    print(f"  Found {len(json_files)} JSON + {len(txt_files)} TXT files")
+    print(f"Found {len(json_files)} JSON + {len(txt_files)} TXT files")
 
     for fp in all_files:
         date_str = fp.stem
