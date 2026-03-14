@@ -1,7 +1,6 @@
 """
 ISW NLP Pipeline
-Reads ALREADY PROCESSED data from isw_cleaner.py
-Adds ML-specific TF-IDF (500 features, fit on TRAIN only, no leakage).
+Reads already (500 features, fit on TRAIN only, no leakage).
 Creates alarm_date = D+1 mapping for merge.
 """
 import argparse
@@ -25,9 +24,8 @@ OUT_VOCAB    = PROCESSED / "tfidf_vocab_model.json"
 OUT_FEATURES = PROCESSED / "isw_features_for_merge.csv"
 
 # must match the train/test split used in train_models.py
-TRAIN_CUTOFF    = pd.Timestamp("2025-01-01")
-TFIDF_FEATURES  = 500   # ML model — 500 reduces noise vs EDA processor's 5000
-MASS_ATTACK_THR = 15
+TRAIN_CUTOFF = pd.Timestamp("2025-01-01")
+TFIDF_FEATURES = 500   # ML model — 500 reduces noise vs EDA processor's 5000
 
 def _normalize_weapons(text: str) -> str:
     return re.sub(r'(?<=[a-zA-Z0-9])-(?=[0-9])', '', text)
@@ -91,7 +89,7 @@ def build_ml_tfidf(
 
     print(f"  matrix: {matrix.shape}")
     expected = ["attack", "strike", "missile", "drone", "forces",
-                "russian", "ukrainian", "f16", "su34", "s300"]
+                "russian", "ukrainian", "artillery", "infantry", "defense"]
     found   = [w for w in expected if w in vocab]
     missing = [w for w in expected if w not in vocab]
     print(f"  war terms in vocab: {found}")
