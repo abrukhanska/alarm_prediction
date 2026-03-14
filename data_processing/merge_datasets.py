@@ -2,93 +2,96 @@ import argparse
 import json
 import sys
 from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import scipy.sparse
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-PROCESSED    = PROJECT_ROOT / "data" / "processed"
+PROCESSED = PROJECT_ROOT / "data" / "processed"
 
-WEATHER_CSV = PROCESSED/"weather_clean.csv"
-ALARMS_CSV = PROCESSED/"alarms_clean.csv"
-ISW_CSV = PROCESSED/"isw_features_for_merge.csv"
-TFIDF_NPZ = PROCESSED/"tfidf_matrix_model.npz"
-TFIDF_VOCAB = PROCESSED/"tfidf_vocab_model.json"
+WEATHER_CSV = PROCESSED / "weather_clean.csv"
+ALARMS_CSV = PROCESSED / "alarms_clean.csv"
+ISW_CSV = PROCESSED / "isw_features_for_merge.csv"
+TFIDF_NPZ = PROCESSED / "tfidf_matrix_model.npz"
+TFIDF_VOCAB = PROCESSED / "tfidf_vocab_model.json"
 
-OUTPUT_CSV = PROCESSED/"merged_dataset.csv"
-REPORT_TXT = PROCESSED/"merge_report.txt"
+OUTPUT_CSV = PROCESSED / "merged_dataset.csv"
+REPORT_TXT = PROCESSED / "merge_report.txt"
 
 # must match isw_nlp_pipeline.py and train_models.py
 TRAIN_CUTOFF = pd.Timestamp("2025-01-01")
 KYIV_TZ = "Europe/Kyiv"
 
-# Crimea and Kyiv Oblast are excluded as rows (no weather station),
-# but their active alarms still count toward n_regions_alarm.
 def _to_kyiv_naive(series: pd.Series) -> pd.Series:
     if series.dt.tz is None:
         return series
     return series.dt.tz_convert(KYIV_TZ).dt.tz_localize(None)
 
 WEATHER_TO_ALARM = {
-    "Vinnytsia":       "Vinnytsia Oblast",
-    "Lutsk":           "Volyn Oblast",
-    "Dnipro":          "Dnipropetrovsk Oblast",
-    "Donetsk":         "Donetsk Oblast",
-    "Zhytomyr":        "Zhytomyr Oblast",
-    "Uzhgorod":        "Zakarpattia Oblast",
-    "Zaporozhye":      "Zaporizhzhia Oblast",
+    "Vinnytsia": "Vinnytsia Oblast",
+    "Lutsk": "Volyn Oblast",
+    "Dnipro": "Dnipropetrovsk Oblast",
+    "Donetsk": "Donetsk Oblast",
+    "Zhytomyr": "Zhytomyr Oblast",
+    "Uzhgorod": "Zakarpattia Oblast",
+    "Zaporozhye": "Zaporizhzhia Oblast",
     "Ivano-Frankivsk": "Ivano-Frankivsk Oblast",
-    "Kyiv":            "City of Kyiv",
-    "Kropyvnytskyi":   "Kirovohrad Oblast",
-    "Lviv":            "Lviv Oblast",
-    "Mykolaiv":        "Mykolaiv Oblast",
-    "Odesa":           "Odesa Oblast",
-    "Poltava":         "Poltava Oblast",
-    "Rivne":           "Rivne Oblast",
-    "Sumy":            "Sumy Oblast",
-    "Ternopil":        "Ternopil Oblast",
-    "Kharkiv":         "Kharkiv Oblast",
-    "Kherson":         "Kherson Oblast",
-    "Khmelnytskyi":    "Khmelnytskyi Oblast",
-    "Cherkasy":        "Cherkasy Oblast",
-    "Chernivtsi":      "Chernivtsi Oblast",
-    "Chernihiv":       "Chernihiv Oblast",
+    "Kyiv": "City of Kyiv",
+    "Kropyvnytskyi": "Kirovohrad Oblast",
+    "Lviv": "Lviv Oblast",
+    "Mykolaiv": "Mykolaiv Oblast",
+    "Odesa": "Odesa Oblast",
+    "Poltava": "Poltava Oblast",
+    "Rivne": "Rivne Oblast",
+    "Sumy": "Sumy Oblast",
+    "Ternopil": "Ternopil Oblast",
+    "Kharkiv": "Kharkiv Oblast",
+    "Kherson": "Kherson Oblast",
+    "Khmelnytskyi": "Khmelnytskyi Oblast",
+    "Cherkasy": "Cherkasy Oblast",
+    "Chernivtsi": "Chernivtsi Oblast",
+    "Chernihiv": "Chernihiv Oblast",
 }
 
 WEATHER_FEATURE_COLS = [
     "datetime_hour", "city_address",
-    "temp_c", "feelslike_c", "humidity", "precip_mm", "precipprob",
-    "snow", "snowdepth", "windspeed", "windgust", "winddir",
-    "pressure", "visibility", "cloudcover", "solarradiation",
-    "uvindex",
+    "hour_temp", "hour_feelslike", "hour_humidity", "hour_dew",
+    "hour_precip", "hour_precipprob", "hour_snow", "hour_snowdepth",
+    "hour_windgust", "hour_windspeed", "hour_winddir", "hour_pressure",
+    "hour_visibility", "hour_cloudcover",
+    "is_night", "is_rain", "is_snow", "temp_diff", "pressure_trend", "season"
 ]
+
 
 def load_inputs() -> tuple:
     print("=" * 65)
-    print("  STEP 1/5: Load inputs")
+    print("STEP 1/5: Load inputs")
     print("=" * 65)
-
     required = [WEATHER_CSV, ALARMS_CSV, ISW_CSV, TFIDF_NPZ, TFIDF_VOCAB]
-    missing  = [p for p in required if not p.exists()]
+    missing = [p for p in required if not p.exists()]
     if missing:
-        print("  ERROR: missing files:")
+        print("ERROR: missing files:")
         for p in missing:
-            print(f"    {p}")
+            print(f"{p}")
         sys.exit(1)
 
     df_w_raw = pd.read_csv(WEATHER_CSV)
-    keep     = [c for c in WEATHER_FEATURE_COLS if c in df_w_raw.columns]
-    dropped  = [c for c in df_w_raw.columns if c not in keep]
+    keep = [c for c in WEATHER_FEATURE_COLS if c in df_w_raw.columns]
+    dropped = [c for c in df_w_raw.columns if c not in keep]
     if dropped:
-        print(f"  weather: dropping {len(dropped)} non-feature columns: {dropped}")
+        print(f"  weather: dropping {len(dropped)} non-feature columns")
+
     df_w = df_w_raw[keep].copy()
     df_w["datetime_hour"] = _to_kyiv_naive(pd.to_datetime(df_w["datetime_hour"], utc=False))
     print(f"  weather:  {df_w.shape}  |  {df_w.city_address.nunique()} cities")
 
-    df_a = pd.read_csv(ALARMS_CSV)
+    with open(ALARMS_CSV, 'r', encoding='utf-8') as f:
+        first_line = f.readline()
+    sep = ';' if ';' in first_line else ','
+    df_a = pd.read_csv(ALARMS_CSV, sep=sep)
+
     df_a["start_dt"] = _to_kyiv_naive(pd.to_datetime(df_a["start_dt"], utc=False))
-    df_a["end_dt"]   = _to_kyiv_naive(pd.to_datetime(df_a["end_dt"],   utc=False))
+    df_a["end_dt"] = _to_kyiv_naive(pd.to_datetime(df_a["end_dt"], utc=False))
     print(f"  alarms:   {df_a.shape}  |  {df_a.region.nunique()} regions")
 
     df_i = pd.read_csv(ISW_CSV)
@@ -109,7 +112,6 @@ def build_alarm_matrix(
         df_a: pd.DataFrame,
         max_hour: pd.Timestamp,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-
     print("\n" + "=" * 65)
     print("  STEP 2/5: Expand alarms to hourly")
     print("=" * 65)
@@ -122,7 +124,8 @@ def build_alarm_matrix(
 
     df_a = df_a.copy()
     df_a["start_h"] = df_a["start_dt"].dt.floor("h")
-    df_a["end_h"] = df_a["end_dt"].dt.floor("h").fillna(max_h)
+    end_dt_adj = np.maximum(df_a["end_dt"].fillna(max_h), df_a["start_dt"] + pd.Timedelta(seconds=1))
+    df_a["end_h"] = (end_dt_adj - pd.Timedelta(seconds=1)).dt.floor("h")
     df_a["end_h"] = df_a[["start_h", "end_h"]].max(axis=1)
 
     print(f"  expanding {len(df_a):,} alarm events via date_range...")
@@ -162,53 +165,54 @@ def build_alarm_matrix(
 
     return df_alarm, df_n_regions
 
-
 def build_isw_daily(
-    df_i:  pd.DataFrame,
-    tfidf: scipy.sparse.csr_matrix,
-    vocab: list[str],
+        df_i: pd.DataFrame,
+        tfidf: scipy.sparse.csr_matrix,
+        vocab: list[str],
 ) -> pd.DataFrame:
     print("\n" + "=" * 65)
     print("  STEP 3/5: Build ISW + TF-IDF daily features")
     print("=" * 65)
+
     assert tfidf.shape[0] == len(df_i), (
         f"TF-IDF rows ({tfidf.shape[0]}) != ISW rows ({len(df_i)}). "
         f"Re-run isw_nlp_pipeline.py --build"
     )
 
-    print("  Converting TF-IDF to Sparse DataFrame to prevent MemoryError...")
-    df_tfidf = pd.DataFrame.sparse.from_spmatrix(
-        tfidf,
+    print("  Converting TF-IDF matrix to DataFrame (Optimized)...")
+    dense_matrix = np.round(tfidf.toarray(), 4).astype(np.float32)
+    df_tfidf = pd.DataFrame(
+        dense_matrix,
         index=df_i.index,
         columns=[f"tfidf_{v}" for v in vocab]
     )
 
-    df_isw_full = pd.concat(
-        [df_i.reset_index(drop=True), df_tfidf.reset_index(drop=True)],
-        axis=1,
-    )
+    df_isw_full = pd.concat([df_i, df_tfidf], axis=1)
 
-    n_nonzero = tfidf.nnz
     print(f"  ISW scalar cols: {len(df_i.columns) - 1}")
     print(f"  TF-IDF cols:     {len(vocab)}")
-    print(f"  TF-IDF non-zero: {n_nonzero:,}")
     return df_isw_full
 
 def merge_all(
-    df_w:         pd.DataFrame,
-    df_alarm:     pd.DataFrame,
-    df_n_regions: pd.DataFrame,
-    df_isw_full:  pd.DataFrame,
+        df_w: pd.DataFrame,
+        df_alarm: pd.DataFrame,
+        df_n_regions: pd.DataFrame,
+        df_isw_full: pd.DataFrame,
 ) -> pd.DataFrame:
     print("\n" + "=" * 65)
     print("  STEP 4/5: Merge")
     print("=" * 65)
     df_w = df_w.copy()
-    df_w["region"] = df_w["city_address"].map(WEATHER_TO_ALARM)
+
+    df_w["_city_match"] = df_w["city_address"].str.split(',').str[0].str.strip()
+    df_w["region"] = df_w["_city_match"].map(WEATHER_TO_ALARM)
+
     unmapped_cities = df_w[df_w["region"].isna()]["city_address"].unique()
     if len(unmapped_cities):
         print(f"  WARNING: cities not in WEATHER_TO_ALARM map: {unmapped_cities}")
         df_w = df_w.dropna(subset=["region"])
+
+    df_w = df_w.drop(columns=["_city_match"])
 
     print(f"  weather backbone: {df_w.shape}")
 
@@ -218,7 +222,7 @@ def merge_all(
         how="left",
     )
     df["alarm"] = df["alarm"].fillna(0).astype(np.int8)
-    print(f"  after alarm join:    {df.shape}  |  alarm rate={df['alarm'].mean()*100:.2f}%")
+    print(f"  after alarm join:    {df.shape}  |  alarm rate={df['alarm'].mean() * 100:.2f}%")
 
     df = df.merge(df_n_regions, on="datetime_hour", how="left")
     df["n_regions_alarm"] = df["n_regions_alarm"].fillna(0).astype(np.int8)
@@ -237,9 +241,10 @@ def merge_all(
     print(f"  after ISW join:      {df.shape}")
 
     isw_scalar_cols = [
-        "isw_report_length", "isw_sources_count", "attack_mentions",
-        "ground_mentions", "casualty_mentions", "total_intensity",
-        "intensity_per_1000", "unique_domains",
+        "isw_report_length", "word_count", "sentence_count", "paragraph_count",
+        "avg_sentence_length", "isw_sources_count", "sources_resolved",
+        "sources_dead", "sources_blocked", "unique_domains", "attack_mentions",
+        "ground_mentions", "casualty_mentions", "total_intensity", "intensity_per_1000"
     ]
     tfidf_col_names = [c for c in df.columns if c.startswith("tfidf_")]
 
@@ -259,10 +264,10 @@ def validate_and_save(df: pd.DataFrame) -> None:
     print("  STEP 5/5: Validate & Save")
     print("=" * 65)
     issues = []
-    n_regions    = df["region"].nunique()
-    n_hours      = df["datetime_hour"].nunique()
-    expected     = n_regions * n_hours
-    actual       = len(df)
+    n_regions = df["region"].nunique()
+    n_hours = df["datetime_hour"].nunique()
+    expected = n_regions * n_hours
+    actual = len(df)
     completeness = actual / expected * 100 if expected > 0 else 0
     print(f"  shape:         {df.shape}")
     print(f"  regions:       {n_regions}  |  unique hours: {n_hours:,}")
@@ -283,14 +288,14 @@ def validate_and_save(df: pd.DataFrame) -> None:
         issues.append(f"ALARM RATE: {alarm_rate:.2f}% (expected 5-50%)")
     print(f"  alarm rate:    {alarm_rate:.2f}%")
 
-    max_n  = df["n_regions_alarm"].max()
+    max_n = df["n_regions_alarm"].max()
     mass_h = (df["n_regions_alarm"] > 15).sum()
     if max_n > 25:
         issues.append(f"n_regions_alarm max={max_n} > 25 total regions")
     print(f"  max n_regions: {max_n}  |  mass_attack_hours(>15): {mass_h:,}")
 
     train = df[df["datetime_hour"] < TRAIN_CUTOFF]
-    test  = df[df["datetime_hour"] >= TRAIN_CUTOFF]
+    test = df[df["datetime_hour"] >= TRAIN_CUTOFF]
     print(f"  train:         {len(train):,} rows (< {TRAIN_CUTOFF.date()})")
     print(f"  test:          {len(test):,} rows (>= {TRAIN_CUTOFF.date()})")
     if len(test) == 0:
@@ -313,8 +318,9 @@ def validate_and_save(df: pd.DataFrame) -> None:
         print(f"\n  All validation checks passed.")
 
     PROCESSED.mkdir(parents=True, exist_ok=True)
+
     df.to_csv(OUTPUT_CSV, index=False)
-    print(f"\n  saved: {OUTPUT_CSV}  {df.shape}")
+    print(f"  saved: {OUTPUT_CSV}")
 
     with open(REPORT_TXT, "w", encoding="utf-8") as f:
         f.write("MERGE REPORT\n" + "=" * 60 + "\n\n")
@@ -354,7 +360,6 @@ def merge() -> None:
     print(f"  Shape:  {df.shape}")
     print(f"  Train/test split: {TRAIN_CUTOFF.date()}")
     print("=" * 65)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
