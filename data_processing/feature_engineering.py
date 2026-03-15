@@ -23,9 +23,6 @@ INPUT_CSV  = PROCESSED / "merged_dataset.csv"
 OUTPUT_CSV = PROCESSED / "features_dataset.csv"
 REPORT_TXT = PROCESSED / "feature_engineering_report.txt"
 
-# MUST match isw_nlp_pipeline.py and train_models.py
-TRAIN_CUTOFF = pd.Timestamp("2025-01-01")
-
 PAL = {
     'navy':   '#003f5c', 'blue':   '#2f4b7c', 'coral': '#f95d6a',
     'orange': '#ff7c43', 'green':  '#2ecc71', 'gray':  '#95a5a6',
@@ -307,7 +304,7 @@ def plot_fe1(df: pd.DataFrame) -> None:
         flag = '  <- STRONG' if row['Lift'] > 1.5 else ('confound' if 'visibility' in row['Feature'] else '')
         print(f"{row['Feature']:30s}  {row['P(=1)%']:>8.2f}  {row['P(=0)%']:>8.2f}  {row['Lift']:>6.3f}x{flag}")
 
-def validate_and_save(df: pd.DataFrame) -> None:
+def validate_and_save(df: pd.DataFrame, train_cutoff: pd.Timestamp) -> None:
     print("\n" + "=" * 65)
     print("STEP 4/4: Validate & Save")
     print("=" * 65)
@@ -363,16 +360,16 @@ def validate_and_save(df: pd.DataFrame) -> None:
         if col in df.columns and df[col].dtype != np.int8:
             issues.append(f"{col} dtype is {df[col].dtype}, expected int8")
 
-    train      = df[df['datetime_hour'] < TRAIN_CUTOFF]
-    test       = df[df['datetime_hour'] >= TRAIN_CUTOFF]
+    train = df[df["datetime_hour"] < train_cutoff]
+    test = df[df["datetime_hour"] >= train_cutoff]
     alarm_rate = df['alarm'].mean() * 100
 
     print(f"  shape:          {df.shape}")
     print(f"  TF-IDF cols:    {len(tfidf_cols)}")
     print(f"  scalar cols:    {len(df.columns) - len(tfidf_cols) - len(region_ohe_cols)}")
     print(f"  alarm rate:     {alarm_rate:.2f}%")
-    print(f"  train:          {len(train):,} rows  (<  {TRAIN_CUTOFF.date()})")
-    print(f"  test:           {len(test):,} rows  (>= {TRAIN_CUTOFF.date()})")
+    print(f"  train:          {len(train):,} rows  (<  {train_cutoff.date()})")
+    print(f"  test:           {len(test):,} rows  (>= {train_cutoff.date()})")
 
     if len(test) == 0:
         issues.append("TEST set is empty — check data date range vs TRAIN_CUTOFF")
@@ -414,7 +411,7 @@ def validate_and_save(df: pd.DataFrame) -> None:
         f.write(f"Shape:          {df.shape}\n")
         f.write(f"Train rows:     {len(train):,}\n")
         f.write(f"Test rows:      {len(test):,}\n")
-        f.write(f"Train cutoff:   {TRAIN_CUTOFF.date()}\n")
+        f.write(f"Train cutoff:   {train_cutoff.date()}\n")
         f.write(f"Alarm rate:     {alarm_rate:.2f}%\n")
         f.write(f"TF-IDF cols:    {len(tfidf_cols)}\n")
         f.write(f"Region OHE:     {len(region_ohe_cols)}\n")
@@ -440,6 +437,7 @@ def validate_and_save(df: pd.DataFrame) -> None:
 def build() -> None:
     df = load_merged()
     df = add_features(df)
+    train_cutoff = df["datetime_hour"].max().floor("D") - pd.Timedelta(days=30)
     plot_fe1(df)
     validate_and_save(df)
 
@@ -447,7 +445,7 @@ def build() -> None:
     print("FEATURE ENGINEERING COMPLETE")
     print("=" * 65)
     print(f"Output: {OUTPUT_CSV}")
-    print(f"TRAIN_CUTOFF: {TRAIN_CUTOFF.date()} (must match train_models.py)")
+    print(f"TRAIN_CUTOFF: {train_cutoff.date()} (must match train_models.py)")
     print()
     print("NOTE: 'region' column kept as metadata.")
     print("train_models.py must exclude ['region','datetime_hour','alarm'] from X.")
