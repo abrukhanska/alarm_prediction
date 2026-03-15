@@ -49,12 +49,12 @@ COLS_TO_DROP = {
 
 def load_merged() -> pd.DataFrame:
     print("=" * 65)
-    print("  STEP 1/4: Load merged dataset")
+    print("STEP 1/4: Load merged dataset")
     print("=" * 65)
 
     if not INPUT_CSV.exists():
-        print(f"  ERROR: {INPUT_CSV} not found")
-        print("  Run: python data_processing/merge_datasets.py --merge")
+        print(f"ERROR: {INPUT_CSV} not found")
+        print("Run: python data_processing/merge_datasets.py --merge")
         sys.exit(1)
 
     df = pd.read_csv(INPUT_CSV)
@@ -62,17 +62,17 @@ def load_merged() -> pd.DataFrame:
 
     df = df.sort_values(['region', 'datetime_hour']).reset_index(drop=True)
 
-    print(f"  shape:      {df.shape}")
-    print(f"  regions:    {df.region.nunique()}")
-    print(f"  range:      {df.datetime_hour.min()} -> {df.datetime_hour.max()}")
-    print(f"  alarm rate: {df.alarm.mean() * 100:.2f}%")
+    print(f"shape: {df.shape}")
+    print(f"regions: {df.region.nunique()}")
+    print(f"range: {df.datetime_hour.min()} -> {df.datetime_hour.max()}")
+    print(f"alarm rate: {df.alarm.mean() * 100:.2f}%")
 
     drop_existing = [c for c in COLS_TO_DROP if c in df.columns]
     if drop_existing:
         df = df.drop(columns=drop_existing)
-        print(f"\n  Dropped {len(drop_existing)} redundant columns:")
+        print(f"\nDropped {len(drop_existing)} redundant columns:")
         for c in drop_existing:
-            print(f"    {c:30s} — {COLS_TO_DROP[c]}")
+            print(f"{c:30s} — {COLS_TO_DROP[c]}")
 
     return df
 
@@ -91,10 +91,10 @@ def _check_time_gaps(df: pd.DataFrame) -> None:
             print(f"  WARNING: {region} — {len(missing)} missing hours "
                   f"(first: {missing[0]})")
     if gaps_found == 0:
-        print(f"  time gap check: no missing hours — shift() lags are exact")
+        print(f"time gap check: no missing hours — shift() lags are exact")
     else:
-        print(f"  WARNING: {gaps_found} total missing hours across all regions")
-        print(f"  lag features may be slightly off for rows adjacent to gaps")
+        print(f"WARNING: {gaps_found} total missing hours across all regions")
+        print(f"lag features may be slightly off for rows adjacent to gaps")
 
 def add_features(df: pd.DataFrame) -> pd.DataFrame:
     print("\n" + "=" * 65)
@@ -105,13 +105,13 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 
     if 'hour_temp' in df.columns and 'hour_feelslike' in df.columns:
         df['temp_diff_feels'] = (df['hour_temp'] - df['hour_feelslike']).astype(np.float32)
-        print(f"  temp_diff_feels              created (hour_temp − hour_feelslike)")
+        print(f"temp_diff_feels created (hour_temp − hour_feelslike)")
     elif 'hour_temp' in df.columns:
-        print(f"  temp_diff_feels              SKIP (hour_feelslike not in data)")
+        print(f"temp_diff_feels SKIP (hour_feelslike not in data)")
 
     for lag in [1, 3, 6, 24]:
         df[f'alarm_lag_{lag}h'] = df.groupby('region')['alarm'].shift(lag)
-    print("  alarm_lag_1h/3h/6h/24h       created")
+    print("alarm_lag_1h/3h/6h/24h created")
 
     df['alarms_last_24h'] = (
         df.groupby('region')['alarm']
@@ -139,36 +139,36 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
         df[c] = df[c].fillna(0).astype(np.int8)   # 0 or 1 only
     for c in last24_col:
         df[c] = df[c].fillna(0).astype(np.int16)  # 0-24 range
-    print(f"  NaN in lags filled:          {nan_before:,} → 0")
+    print(f"NaN in lags filled: {nan_before:,} → 0")
 
-    hour  = df['datetime_hour'].dt.hour
+    hour = df['datetime_hour'].dt.hour
     month = df['datetime_hour'].dt.month
     df['hour_sin']  = np.sin(2 * np.pi * hour  / 24).astype(np.float32)
     df['hour_cos']  = np.cos(2 * np.pi * hour  / 24).astype(np.float32)
     df['month_sin'] = np.sin(2 * np.pi * month / 12).astype(np.float32)
     df['month_cos'] = np.cos(2 * np.pi * month / 12).astype(np.float32)
-    print("  hour_sin/cos, month_sin/cos  created")
+    print("hour_sin/cos, month_sin/cos  created")
 
     df['is_weekend'] = (df['datetime_hour'].dt.dayofweek >= 5).astype(np.int8)
     pct = df['is_weekend'].mean() * 100
-    print(f"  is_weekend:                  {pct:.1f}% of hours")
+    print(f"is_weekend: {pct:.1f}% of hours")
 
     if 'hour_visibility' in df.columns:
         df['low_visibility'] = (df['hour_visibility'] < VISIBILITY_THR).astype(np.int8)
         pct = df['low_visibility'].mean() * 100
-        print(f"  low_visibility (<{VISIBILITY_THR}km):      {pct:.1f}% winter confound")
+        print(f"low_visibility (<{VISIBILITY_THR}km): {pct:.1f}% winter confound")
         df = df.drop(columns=['hour_visibility'])
-        print("  hour_visibility raw column dropped (NaNs eliminated)")
+        print("hour_visibility raw column dropped (NaNs eliminated)")
 
     if 'hour_windspeed' in df.columns:
         df['strong_wind'] = (df['hour_windspeed'] > WINDSPEED_THR).astype(np.int8)
         pct = df['strong_wind'].mean() * 100
-        print(f"  strong_wind (>{WINDSPEED_THR}m/s):      {pct:.1f}%")
+        print(f"strong_wind (>{WINDSPEED_THR}m/s):      {pct:.1f}%")
 
     if 'hour_temp' in df.columns:
         df['freezing'] = (df['hour_temp'] < FREEZING_THR).astype(np.int8)
         pct = df['freezing'].mean() * 100
-        print(f"  freezing (<{FREEZING_THR}°C):          {pct:.1f}%")
+        print(f"freezing (<{FREEZING_THR}°C): {pct:.1f}%")
 
     bad_idx = pd.Series(0, index=df.index, dtype=np.int8)
     if 'hour_precip' in df.columns:
@@ -178,21 +178,21 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     if 'strong_wind' in df.columns:
         bad_idx = bad_idx + df['strong_wind']
     df['bad_weather_index'] = bad_idx.astype(np.int8)
-    print(f"  bad_weather_index (0-3):     mean={df['bad_weather_index'].mean():.2f}")
+    print(f"bad_weather_index (0-3): mean={df['bad_weather_index'].mean():.2f}")
 
     if 'freezing' in df.columns and 'is_night' in df.columns:
         df['energy_infra_stress'] = (
             df['freezing'] & df['is_night']
         ).astype(np.int8)
         pct = df['energy_infra_stress'].mean() * 100
-        print(f"  energy_infra_stress:         {pct:.1f}% of hours (freezing × is_night)")
+        print(f"energy_infra_stress: {pct:.1f}% of hours (freezing × is_night)")
 
     if 'hour_temp' in df.columns:
         temp_72h_ago = df.groupby('region')['hour_temp'].shift(72)
         df['temp_drop_last_3d'] = (df['hour_temp'] - temp_72h_ago).astype(np.float32)
         nan_t = df['temp_drop_last_3d'].isna().sum()
         df['temp_drop_last_3d'] = df['temp_drop_last_3d'].fillna(0)
-        print(f"  temp_drop_last_3d:           {nan_t:,} NaN → 0 (imputation: 0 = no info, not no change)")
+        print(f"temp_drop_last_3d: {nan_t:,} NaN → 0 (imputation: 0 = no info, not no change)")
 
     if 'total_intensity' in df.columns:
         intensity_24h_ago = df.groupby('region')['total_intensity'].shift(24)
@@ -201,25 +201,25 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
         ).astype(np.float32)
         nan_i = df['isw_intensity_growth'].isna().sum()
         df['isw_intensity_growth'] = df['isw_intensity_growth'].fillna(0)
-        print(f"  isw_intensity_growth:        {nan_i:,} NaN → 0 (escalation delta)")
+        print(f"isw_intensity_growth: {nan_i:,} NaN → 0 (escalation delta)")
 
     if 'n_regions_alarm' in df.columns:
         over25 = (df['n_regions_alarm'] > 25).sum()
         if over25:
-            print(f"  WARNING: {over25} rows n_regions_alarm > 25 — capping at 25")
+            print(f"WARNING: {over25} rows n_regions_alarm > 25 — capping at 25")
             df['n_regions_alarm'] = df['n_regions_alarm'].clip(upper=25).astype(np.int8)
 
 
     region_dummies = pd.get_dummies(df['region'], prefix='region', drop_first=True, dtype=np.int8)
     df = pd.concat([df, region_dummies], axis=1)
-    print(f"  region OHE:                  {region_dummies.shape[1]} binary columns added")
+    print(f"region OHE: {region_dummies.shape[1]} binary columns added")
 
-    print(f"\n  Total columns after FE: {len(df.columns)}")
+    print(f"\nTotal columns after FE: {len(df.columns)}")
     return df
 
 def plot_fe1(df: pd.DataFrame) -> None:
     print("\n" + "=" * 65)
-    print("  STEP 3/4: Figure FE1 — Feature Predictive Power")
+    print("STEP 3/4: Figure FE1 — Feature Predictive Power")
     print("=" * 65)
 
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -233,7 +233,7 @@ def plot_fe1(df: pd.DataFrame) -> None:
         ('alarm_lag_24h',          'alarm_lag_24h\n(24h ago)'),
         ('is_night',               'is_night\n(22:00–05:00)'),
         ('is_weekend',             'is_weekend\n(Sat/Sun)'),
-        ('low_visibility',         'low_visibility\n(<5km) confound'),
+        ('low_visibility',         'low_visibility\n(<5km)\nconfound'),
         ('strong_wind',            'strong_wind\n(>15 m/s)'),
         ('freezing',               'freezing\n(<0°C)'),
         ('energy_infra_stress',    'energy_infra_stress\n(freeze × night)'),
@@ -278,8 +278,7 @@ def plot_fe1(df: pd.DataFrame) -> None:
         ax.set_xticks([0, 1])
         ax.set_xticklabels(['= 0', '= 1'], fontsize=9)
         ax.set_ylabel('P(alarm=1) %', fontsize=8)
-        ylim_max = min(100.0, max(p0, p1, base_rate) * 100 * 2.2)
-        ax.set_ylim(0, max(ylim_max, 1.0))
+        ax.set_ylim(0, 75)
         ax.grid(axis='y', alpha=0.3)
         ax.legend(fontsize=7, loc='upper left')
 
@@ -306,11 +305,11 @@ def plot_fe1(df: pd.DataFrame) -> None:
     print(f"  {'-'*58}")
     for _, row in lift_df.iterrows():
         flag = '  <- STRONG' if row['Lift'] > 1.5 else ('confound' if 'visibility' in row['Feature'] else '')
-        print(f"  {row['Feature']:30s}  {row['P(=1)%']:>8.2f}  {row['P(=0)%']:>8.2f}  {row['Lift']:>6.3f}x{flag}")
+        print(f"{row['Feature']:30s}  {row['P(=1)%']:>8.2f}  {row['P(=0)%']:>8.2f}  {row['Lift']:>6.3f}x{flag}")
 
 def validate_and_save(df: pd.DataFrame) -> None:
     print("\n" + "=" * 65)
-    print("  STEP 4/4: Validate & Save")
+    print("STEP 4/4: Validate & Save")
     print("=" * 65)
 
     issues = []
@@ -337,7 +336,7 @@ def validate_and_save(df: pd.DataFrame) -> None:
     if len(region_ohe_cols) < 20:
         issues.append(f"Only {len(region_ohe_cols)} region OHE columns (expected ~23)")
     else:
-        print(f"  region OHE cols: {len(region_ohe_cols)}")
+        print(f"region OHE cols: {len(region_ohe_cols)}")
 
     critical = ['region', 'datetime_hour', 'alarm', 'n_regions_alarm']
     for col in critical:
@@ -351,12 +350,12 @@ def validate_and_save(df: pd.DataFrame) -> None:
     scalar_nan = df_scalar.isnull().sum()
     scalar_nan = scalar_nan[scalar_nan > 0]
     if len(scalar_nan):
-        print(f"  NaN in scalar columns (excl TF-IDF/OHE):")
+        print(f"NaN in scalar columns (excl TF-IDF/OHE):")
         print(scalar_nan.to_string())
         for col, cnt in scalar_nan.items():
             issues.append(f"NaN in '{col}': {cnt}")
     else:
-        print(f"  NaN in scalar columns: none")
+        print(f"NaN in scalar columns: none")
 
     for lag in [1, 3, 6, 24]:
         col = f'alarm_lag_{lag}h'
@@ -384,14 +383,14 @@ def validate_and_save(df: pd.DataFrame) -> None:
         mass_h = (df['n_regions_alarm'] > 15).sum()
         if max_n > 25:
             issues.append(f"n_regions_alarm max={max_n} > 25")
-        print(f"  n_regions_alarm max={max_n}  mass_attack_hours(>15)={mass_h:,}")
+        print(f"n_regions_alarm max={max_n}  mass_attack_hours(>15)={mass_h:,}")
 
     if issues:
         print(f"\n  Issues ({len(issues)}):")
         for iss in issues:
             print(f"    {iss}")
     else:
-        print("\n  All validation checks passed.")
+        print("\nAll validation checks passed.")
 
     PROCESSED.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUTPUT_CSV, index=False)
@@ -444,7 +443,7 @@ def build() -> None:
     validate_and_save(df)
 
     print("\n" + "=" * 65)
-    print("  FEATURE ENGINEERING COMPLETE")
+    print("FEATURE ENGINEERING COMPLETE")
     print("=" * 65)
     print(f"Output: {OUTPUT_CSV}")
     print(f"TRAIN_CUTOFF: {TRAIN_CUTOFF.date()} (must match train_models.py)")
@@ -458,7 +457,7 @@ def build() -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Feature Engineering — Task 2b",
+        description="Feature Engineering",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
