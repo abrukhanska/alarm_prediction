@@ -100,9 +100,12 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
     _check_time_gaps(df)
 
     if 'hour_temp' in df.columns and 'hour_feelslike' in df.columns:
-        df['temp_diff_feels'] = (df['hour_temp'] - df['hour_feelslike']).astype(np.float32)
-        df = df.drop(columns=['hour_feelslike'])
-        print(f"temp_diff_feels created (hour_temp − hour_feelslike)")
+        df['hour_visibility'] = df['hour_visibility'].fillna(df['hour_visibility'].median())
+        df['low_visibility'] = (df['hour_visibility'] < VISIBILITY_THR).astype(np.int8)
+        pct = df['low_visibility'].mean() * 100
+        print(f"low_visibility (<{VISIBILITY_THR}km): {pct:.1f}% winter confound")
+        df = df.drop(columns=['hour_visibility'])
+        print("hour_visibility raw column dropped (NaNs eliminated)")
     elif 'hour_temp' in df.columns:
         print(f"temp_diff_feels SKIP (hour_feelslike not in data)")
 
