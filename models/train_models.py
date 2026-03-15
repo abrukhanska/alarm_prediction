@@ -201,7 +201,7 @@ def train_logistic_regression(
         ('logreg', LogisticRegression(
             max_iter=1000,
             random_state=42,
-            solver='saga',
+            solver='liblinear',
         )),
     ])
 
