@@ -23,8 +23,6 @@ OUT_TFIDF    = PROCESSED / "tfidf_matrix_model.npz"
 OUT_VOCAB    = PROCESSED / "tfidf_vocab_model.json"
 OUT_FEATURES = PROCESSED / "isw_features_for_merge.csv"
 
-# must match the train/test split used in train_models.py
-TRAIN_CUTOFF = pd.Timestamp("2025-01-01")
 TFIDF_FEATURES = 500   # ML model — 500 reduces noise vs EDA processor's 5000
 
 def _normalize_weapons(text: str) -> str:
@@ -62,17 +60,28 @@ def build_ml_tfidf(
     print("  STEP 2/3: Build ML TF-IDF (fit on TRAIN only)")
     print("=" * 65)
 
+    try:
+        alarms_file = PROCESSED / "alarms_clean.csv"
+        with open(alarms_file, 'r', encoding='utf-8') as f:
+            sep = ';' if ';' in f.readline() else ','
+        df_a = pd.read_csv(alarms_file, sep=sep)
+        max_alarm_date = pd.to_datetime(df_a["start_dt"], utc=True).dt.tz_convert("Europe/Kyiv").dt.tz_localize(
+            None).max().floor("D")
+    except Exception as e:
+        print(f"Warning: Could not read alarms for sync. Using ISW date. {e}")
+        max_alarm_date = df["date"].max().floor("D")
+    train_cutoff = max_alarm_date - pd.Timedelta(days=30)
+
     corpus_norm = [_normalize_weapons(c) for c in corpus]
 
-    train_mask  = df["date"] < TRAIN_CUTOFF
+    train_mask = df["date"] < train_cutoff
     train_texts = [c for c, m in zip(corpus_norm, train_mask) if m]
-    n_train     = len(train_texts)
-    n_total     = len(corpus_norm)
+    n_train = len(train_texts)
+    n_total = len(corpus_norm)
 
-    print(f"  train: {n_train} docs (before {TRAIN_CUTOFF.date()})")
+    print(f"  train: {n_train} docs (before {train_cutoff.date()})")
     print(f"  test:  {n_total - n_train} docs")
-    print(f"  features: {TFIDF_FEATURES} (vs 5000 in EDA processor)")
-    print(f"  NOTE: TRAIN_CUTOFF must match split date in train_models.py (Task 4)")
+    print(f"  features: {TFIDF_FEATURES}")
 
     custom_stop_words = list(ENGLISH_STOP_WORDS.union({
         "click", "com", "dot", "html", "http", "https", "www", "org",
@@ -87,21 +96,17 @@ def build_ml_tfidf(
         "source", "sources", "stated", "support", "today", "january",
         "february", "march", "april", "may", "june", "july", "august",
         "september", "october", "november", "december",
-        "000", "1st", "2nd", "3rd", "2022", "2023", "2024", "2025"
+        "000", "1st", "2nd", "3rd", "2022", "2023", "2024", "2025", "2026"
     }))
 
     vectorizer = TfidfVectorizer(
-        max_features=TFIDF_FEATURES,
-        stop_words=custom_stop_words,
-        ngram_range=(1, 2),
-        min_df=5,
-        max_df=0.85,
-        sublinear_tf=True,
-        token_pattern=r"(?u)\b[a-zA-Z0-9]{3,}\b",
+        max_features=TFIDF_FEATURES, stop_words=custom_stop_words,
+        ngram_range=(1, 2), min_df=5, max_df=0.85,
+        sublinear_tf=True, token_pattern=r"(?u)\b[a-zA-Z0-9]{3,}\b",
     )
-    vectorizer.fit(train_texts)                  # fit on TRAIN only — no leakage
-    matrix = vectorizer.transform(corpus_norm)   # transform on all (train + test)
-    vocab  = vectorizer.get_feature_names_out().tolist()
+    vectorizer.fit(train_texts)  # fit on TRAIN only — no leakage
+    matrix = vectorizer.transform(corpus_norm)  # transform on all (train + test)
+    vocab = vectorizer.get_feature_names_out().tolist()
 
     print(f"  matrix: {matrix.shape}")
     expected = ["attack", "strike", "missile", "drone", "forces",
@@ -111,7 +116,7 @@ def build_ml_tfidf(
     print(f"  war terms in vocab: {found}")
     if missing:
         print(f"  NOT in vocab (too rare / filtered by min_df): {missing}")
-    return matrix, vocab
+    return matrix, vocab, train_cutoff
 
 def build_merge_features(df: pd.DataFrame) -> pd.DataFrame:
     print("\n" + "=" * 65)
@@ -163,13 +168,13 @@ def save_all(
 
 def build() -> None:
     df, corpus    = load_processed()
-    matrix, vocab = build_ml_tfidf(df, corpus)
+    matrix, vocab, train_cutoff = build_ml_tfidf(df, corpus)
     df_features   = build_merge_features(df)
     save_all(matrix, vocab, df_features)
     print("\n" + "=" * 65)
     print("NLP PIPELINE COMPLETE")
     print("=" * 65)
-    print(f"TF-IDF:{matrix.shape}  (fit on train < {TRAIN_CUTOFF.date()})")
+    print(f"TF-IDF:{matrix.shape}  (fit on train < {train_cutoff.date()})")
     print(f"Features for merge: {df_features.shape}")
     print(f"D+1 shift applied: alarm_date = ISW date + 1 day")
     print("=" * 65)
