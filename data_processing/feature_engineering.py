@@ -44,7 +44,6 @@ COLS_TO_DROP = {
     'sources_resolved':   'sub-component of isw_sources_count — redundant',
     'sources_dead':       'sub-component of isw_sources_count — redundant',
     'sources_blocked':    'sub-component of isw_sources_count — redundant',
-    'hour_feelslike':     'replaced by temp_diff_feels (r≈0.99 with hour_temp — multicollinearity)',
 }
 
 def load_merged() -> pd.DataFrame:
@@ -105,6 +104,7 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 
     if 'hour_temp' in df.columns and 'hour_feelslike' in df.columns:
         df['temp_diff_feels'] = (df['hour_temp'] - df['hour_feelslike']).astype(np.float32)
+        df = df.drop(columns=['hour_feelslike'])
         print(f"temp_diff_feels created (hour_temp − hour_feelslike)")
     elif 'hour_temp' in df.columns:
         print(f"temp_diff_feels SKIP (hour_feelslike not in data)")
@@ -323,6 +323,7 @@ def validate_and_save(df: pd.DataFrame) -> None:
         'bad_weather_index', 'energy_infra_stress',
         'temp_drop_last_3d', 'isw_intensity_growth',
         'isw_report_length', 'isw_sources_count', 'intensity_per_1000',
+        'temp_diff_feels',
     ]
     for f in expected_features:
         if f not in df.columns:
