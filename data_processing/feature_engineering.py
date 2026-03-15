@@ -437,7 +437,12 @@ def validate_and_save(df: pd.DataFrame, train_cutoff: pd.Timestamp) -> None:
 def build() -> None:
     df = load_merged()
     df = add_features(df)
-    train_cutoff = df["datetime_hour"].max().floor("D") - pd.Timedelta(days=30)
+
+    real_data_end = df[df['n_regions_alarm'] > 0]['datetime_hour'].max()
+    if pd.isna(real_data_end):
+        real_data_end = df["datetime_hour"].max()
+
+    train_cutoff = real_data_end.floor("D") - pd.Timedelta(days=30)
     plot_fe1(df)
     validate_and_save(df)
 
