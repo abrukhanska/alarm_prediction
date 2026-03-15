@@ -103,6 +103,7 @@ data/raw/war_events/*
 !data/raw/war_events/.gitkeep
 
 data/processed/*
+data/processed/*.csv
 !data/processed/.gitkeep
 
 data/*.csv
@@ -113,4 +114,10 @@ data/*.xlsx
 logs/*
 !logs/.gitkeep
 
+models/*.pkl
+models/training_report.txt
+
+analysis/plots/models/*.png
+analysis/plots/*.png
+analysis/plots/features/*.png
 test_data/
