@@ -444,7 +444,7 @@ def build() -> None:
 
     train_cutoff = real_data_end.floor("D") - pd.Timedelta(days=30)
     plot_fe1(df)
-    validate_and_save(df)
+    validate_and_save(df, train_cutoff)
 
     print("\n" + "=" * 65)
     print("FEATURE ENGINEERING COMPLETE")
