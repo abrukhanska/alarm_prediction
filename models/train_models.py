@@ -206,7 +206,7 @@ def train_logistic_regression(
     ])
 
     param_grid = {
-        'logreg__C':            [0.001, 0.01, 0.1, 1, 10, 100],
+        'logreg__C':            [0.01, 0.1, 1],
         'logreg__class_weight': [None, 'balanced'],
         'logreg__penalty':      ['l2'],
     }
