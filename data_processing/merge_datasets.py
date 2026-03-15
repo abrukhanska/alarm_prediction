@@ -19,7 +19,6 @@ OUTPUT_CSV = PROCESSED / "merged_dataset.csv"
 REPORT_TXT = PROCESSED / "merge_report.txt"
 
 # must match isw_nlp_pipeline.py and train_models.py
-TRAIN_CUTOFF = pd.Timestamp("2025-01-01")
 KYIV_TZ = "Europe/Kyiv"
 
 def _to_kyiv_naive(series: pd.Series) -> pd.Series:
@@ -207,6 +206,12 @@ def merge_all(
     df_w["_city_match"] = df_w["city_address"].str.split(',').str[0].str.strip()
     df_w["region"] = df_w["_city_match"].map(WEATHER_TO_ALARM)
 
+    kyiv_weather = df_w[df_w["region"] == "City of Kyiv"].copy()
+    if not kyiv_weather.empty:
+        kyiv_weather["region"] = "Kyiv Oblast"
+        df_w = pd.concat([df_w, kyiv_weather], ignore_index=True)
+        print("  [INFO] Duplicated Kyiv weather for Kyiv Oblast")
+
     unmapped_cities = df_w[df_w["region"].isna()]["city_address"].unique()
     if len(unmapped_cities):
         print(f"  WARNING: cities not in WEATHER_TO_ALARM map: {unmapped_cities}")
@@ -259,7 +264,7 @@ def merge_all(
     df = df.sort_values(["region", "datetime_hour"]).reset_index(drop=True)
     return df
 
-def validate_and_save(df: pd.DataFrame) -> None:
+def validate_and_save(df: pd.DataFrame, train_cutoff: pd.Timestamp, df_a: pd.DataFrame) -> None:
     print("\n" + "=" * 65)
     print("  STEP 5/5: Validate & Save")
     print("=" * 65)
@@ -274,7 +279,6 @@ def validate_and_save(df: pd.DataFrame) -> None:
     print(f"  completeness:  {actual:,} / {expected:,} = {completeness:.1f}%")
     print(f"  date range:    {df.datetime_hour.min()} -> {df.datetime_hour.max()}")
 
-    EXPECTED_ROWS = n_regions * n_hours
     if completeness < 95:
         issues.append(f"completeness below 95%: {completeness:.1f}%")
 
@@ -294,10 +298,10 @@ def validate_and_save(df: pd.DataFrame) -> None:
         issues.append(f"n_regions_alarm max={max_n} > 25 total regions")
     print(f"  max n_regions: {max_n}  |  mass_attack_hours(>15): {mass_h:,}")
 
-    train = df[df["datetime_hour"] < TRAIN_CUTOFF]
-    test = df[df["datetime_hour"] >= TRAIN_CUTOFF]
-    print(f"  train:         {len(train):,} rows (< {TRAIN_CUTOFF.date()})")
-    print(f"  test:          {len(test):,} rows (>= {TRAIN_CUTOFF.date()})")
+    train = df[df["datetime_hour"] < train_cutoff]
+    test = df[df["datetime_hour"] >= train_cutoff]
+    print(f"  train:         {len(train):,} rows (< {train_cutoff.date()})")
+    print(f"  test:          {len(test):,} rows (>= {train_cutoff.date()})")
     if len(test) == 0:
         issues.append("TEST set is empty — check TRAIN_CUTOFF and data range")
 
@@ -324,6 +328,8 @@ def validate_and_save(df: pd.DataFrame) -> None:
 
     with open(REPORT_TXT, "w", encoding="utf-8") as f:
         f.write("MERGE REPORT\n" + "=" * 60 + "\n\n")
+        f.write(f"Dynamic Cutoff: {train_cutoff.date()} (30-day Sliding Window)\n")
+        f.write(f"Max Alarm Date: {df_a['start_dt'].max().date()} (Target Anchor)\n")
         f.write(f"Shape:         {df.shape}\n")
         f.write(f"Regions:       {n_regions}\n")
         f.write(f"Hours:         {n_hours:,}\n")
@@ -345,20 +351,26 @@ def validate_and_save(df: pd.DataFrame) -> None:
 
 def merge() -> None:
     df_w, df_a, df_i, tfidf, vocab = load_inputs()
+    max_alarm_date = df_a["start_dt"].max().floor("D")
+
+    train_cutoff = max_alarm_date - pd.Timedelta(days=30)
 
     max_hour = df_w["datetime_hour"].max() if "datetime_hour" in df_w.columns else pd.Timestamp.now()
 
+    print(f"  Sync Check: Last alarm date is {max_alarm_date.date()}")
+    print(f"  Sliding Window Cutoff: {train_cutoff.date()}")
     df_alarm, df_n_regions = build_alarm_matrix(df_a, max_hour)
+
     df_isw_full = build_isw_daily(df_i, tfidf, vocab)
     df = merge_all(df_w, df_alarm, df_n_regions, df_isw_full)
-    validate_and_save(df)
+    validate_and_save(df, train_cutoff, df_a)
 
     print("\n" + "=" * 65)
     print("  MERGE COMPLETE")
     print("=" * 65)
     print(f"  Output: {OUTPUT_CSV}")
     print(f"  Shape:  {df.shape}")
-    print(f"  Train/test split: {TRAIN_CUTOFF.date()}")
+    print(f"  Train/test split: {train_cutoff.date()}")
     print("=" * 65)
 
 if __name__ == "__main__":
