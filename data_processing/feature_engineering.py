@@ -216,90 +216,106 @@ def add_features(df: pd.DataFrame) -> pd.DataFrame:
 
 def plot_fe1(df: pd.DataFrame) -> None:
     print("\n" + "=" * 65)
-    print("STEP 3/4: Figure FE1 — Feature Predictive Power")
+    print("STEP 3/4: Figure M2 — Feature Predictive Power")
     print("=" * 65)
 
     PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-    df_plot   = df.copy()
+    df_plot = df.copy()
     base_rate = df_plot['alarm'].mean()
 
     binary_features = [
-        ('alarm_lag_1h',           'alarm_lag_1h\n(1h ago)'),
-        ('alarm_lag_3h',           'alarm_lag_3h\n(3h ago)'),
-        ('alarm_lag_6h',           'alarm_lag_6h\n(6h ago)'),
-        ('alarm_lag_24h',          'alarm_lag_24h\n(24h ago)'),
-        ('is_night',               'is_night\n(22:00–05:00)'),
-        ('is_weekend',             'is_weekend\n(Sat/Sun)'),
-        ('low_visibility',         'low_visibility\n(<5km)\nconfound'),
-        ('strong_wind',            'strong_wind\n(>15 m/s)'),
-        ('freezing',               'freezing\n(<0°C)'),
-        ('energy_infra_stress',    'energy_infra_stress\n(freeze × night)'),
-        ('is_rain',                'is_rain'),
-        ('is_snow',                'is_snow'),
+        ('alarm_lag_1h', 'Alarm Lag 1h'),
+        ('alarm_lag_3h', 'Alarm Lag 3h'),
+        ('alarm_lag_6h', 'Alarm Lag 6h'),
+        ('alarm_lag_24h', 'Alarm Lag 24h'),
+        ('is_night', 'Night Time (22:00–05:00)'),
+        ('is_weekend', 'Weekend (Sat/Sun)'),
+        ('low_visibility', 'Low Visibility (<5km)'),
+        ('strong_wind', 'Strong Wind (>15 m/s)'),
+        ('freezing', 'Freezing (<0°C)'),
+        ('energy_infra_stress', 'Energy Stress (Freeze x Night)'),
+        ('is_rain', 'Rain Condition'),
+        ('is_snow', 'Snow Condition'),
     ]
     available = [(f, lbl) for f, lbl in binary_features if f in df_plot.columns]
 
     n_plots = min(len(available), 12)
-    n_cols  = 4
-    n_rows  = (n_plots + n_cols - 1) // n_cols
+    n_cols = 4
+    n_rows = (n_plots + n_cols - 1) // n_cols
 
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(20, 4.5 * n_rows),
-                              gridspec_kw={'hspace': 0.5, 'wspace': 0.35})
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 9.5),
+                             gridspec_kw={'hspace': 0.45, 'wspace': 0.25}, facecolor='white')
     axes = np.array(axes).flatten()
 
     lift_rows = []
 
     for idx, (feat, lbl) in enumerate(available[:n_plots]):
-        ax     = axes[idx]
+        ax = axes[idx]
         values = df_plot[feat].dropna().unique()
 
-        p0   = df_plot[df_plot[feat] == 0]['alarm'].mean() if 0 in values else 0.0
-        p1   = df_plot[df_plot[feat] == 1]['alarm'].mean() if 1 in values else 0.0
+        p0 = df_plot[df_plot[feat] == 0]['alarm'].mean() if 0 in values else 0.0
+        p1 = df_plot[df_plot[feat] == 1]['alarm'].mean() if 1 in values else 0.0
         lift = p1 / base_rate if base_rate > 0 else 0.0
 
-        bar_color = PAL['coral'] if lift > 1.3 else PAL['blue']
-        ax.bar([0, 1], [p0 * 100, p1 * 100],
-               color=[PAL['gray'], bar_color], alpha=0.85,
-               width=0.5, edgecolor='white', linewidth=0.8)
-        ax.axhline(y=base_rate * 100, color=PAL['orange'], linestyle='--',
-                   linewidth=1.5, label=f'Base: {base_rate*100:.1f}%')
+        bar_color = PAL['coral'] if lift > 1.3 else (PAL['blue'] if lift < 0.85 else '#5c7b9c')
 
-        lift_clr = PAL['coral'] if lift > 1.3 else (PAL['gray'] if lift < 0.8 else PAL['navy'])
-        ax.text(0.97, 0.97, f'Lift {lift:.2f}×',
+        ax.bar([0, 1], [p0 * 100, p1 * 100],
+               color=[PAL['gray'], bar_color], alpha=0.9,
+               width=0.45, edgecolor='none')
+
+        ax.axhline(y=base_rate * 100, color=PAL['orange'], linestyle='--',
+                   linewidth=1.5, zorder=0)
+
+        lift_clr = PAL['coral'] if lift > 1.3 else (PAL['gray'] if lift < 0.85 else PAL['navy'])
+        ax.text(0.95, 0.92, f'Lift: {lift:.2f}x',
                 transform=ax.transAxes, ha='right', va='top',
                 fontsize=10, fontweight='bold', color=lift_clr,
-                bbox=dict(boxstyle='round,pad=0.25', facecolor='white',
-                          edgecolor=lift_clr, alpha=0.9, linewidth=1.2))
+                bbox=dict(boxstyle='square,pad=0.3', facecolor='white',
+                          edgecolor=lift_clr, alpha=0.9, linewidth=1))
 
-        ax.set_title(lbl, fontsize=9, fontweight='bold', pad=4)
+        ax.set_title(lbl, fontsize=11, fontweight='bold', pad=10, color='#333333')
         ax.set_xticks([0, 1])
-        ax.set_xticklabels(['= 0', '= 1'], fontsize=9)
-        ax.set_ylabel('P(alarm=1) %', fontsize=8)
-        ax.set_ylim(0, 75)
-        ax.grid(axis='y', alpha=0.3)
-        ax.legend(fontsize=7, loc='upper left')
+        ax.set_xticklabels(['False (=0)', 'True (=1)'], fontsize=9.5)
 
-        lift_rows.append({'Feature': feat, 'P(=1)%': round(p1*100, 2),
-                          'P(=0)%': round(p0*100, 2), 'Lift': round(lift, 3)})
+        if idx % n_cols == 0:
+            ax.set_ylabel('P(Alarm) %', fontsize=9.5, fontweight='bold', color='#555555')
+            ax.spines['left'].set_color('#cccccc')
+        else:
+            ax.set_ylabel('')
+            ax.spines['left'].set_visible(False)
+            ax.tick_params(axis='y', left=False, labelleft=False)
+
+        ax.set_ylim(0, 70)
+        ax.grid(axis='y', alpha=0.15, linestyle='--')
+
+        ax.spines[['top', 'right']].set_visible(False)
+        ax.spines['bottom'].set_color('#cccccc')
+
+        lift_rows.append({'Feature': feat, 'P(=1)%': round(p1 * 100, 2),
+                          'P(=0)%': round(p0 * 100, 2), 'Lift': round(lift, 3)})
 
     for idx in range(n_plots, len(axes)):
         axes[idx].set_visible(False)
 
-    plt.suptitle(
-        'Figure FE1. Predictive Power of Engineered Binary Features\n'
-        'Lift = P(alarm|feature=1) / base_rate  |  '
-        'low_visibility has winter confound — RF month_sin/cos isolates it',
-        fontsize=13, fontweight='bold', y=1.02)
+    plt.suptitle('Figure FE1. Predictive Power of Engineered Binary Features',
+                 fontsize=18, fontweight='bold', y=1.06, color='#111111')
+
+    fig.text(0.5, 0.99,
+             f"Bars show the probability of an alarm when the feature is False (Grey) vs True (Colored).\n"
+             f"The dashed orange line represents the global baseline alarm rate ({base_rate * 100:.1f}%).",
+             ha='center', va='top', fontsize=12, color='dimgrey')
+
+    fig.subplots_adjust(top=0.85)
 
     out = PLOTS_DIR / 'FE1_feature_power.png'
-    fig.savefig(out, dpi=200, bbox_inches='tight', facecolor='white')
+    fig.savefig(out, dpi=300, bbox_inches='tight', facecolor='white')
     plt.close()
     print(f"  Saved: {out}")
 
     lift_df = pd.DataFrame(lift_rows).sort_values('Lift', ascending=False)
-    print(f"\n  Lift table (base rate = {base_rate*100:.2f}%):")
+    print(f"\n  Lift table (base rate = {base_rate * 100:.2f}%):")
     print(f"  {'Feature':30s}  {'P(=1)%':>8s}  {'P(=0)%':>8s}  {'Lift':>6s}")
-    print(f"  {'-'*58}")
+    print(f"  {'-' * 58}")
     for _, row in lift_df.iterrows():
         flag = '  <- STRONG' if row['Lift'] > 1.5 else ('confound' if 'visibility' in row['Feature'] else '')
         print(f"{row['Feature']:30s}  {row['P(=1)%']:>8.2f}  {row['P(=0)%']:>8.2f}  {row['Lift']:>6.3f}x{flag}")
