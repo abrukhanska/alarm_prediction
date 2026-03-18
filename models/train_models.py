@@ -15,17 +15,12 @@ import pickle
 import sys
 import warnings
 from pathlib import Path
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import (
-    ConfusionMatrixDisplay,
     accuracy_score,
     classification_report,
     confusion_matrix,
@@ -44,7 +39,6 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROCESSED = PROJECT_ROOT / "data" / "processed"
 MODELS_DIR = PROJECT_ROOT / "models"
-PLOTS_DIR = PROJECT_ROOT / "analysis" / "plots" / "models"
 
 FEATURES_CSV = PROCESSED / "features_dataset.csv"
 REPORT_TXT = MODELS_DIR / "training_report.txt"
@@ -53,11 +47,6 @@ TARGET_COL = "alarm"
 N_CV_SPLITS = 5
 
 COLS_TO_REMOVE_FROM_X = ['region', 'datetime_hour', TARGET_COL, 'n_regions_alarm']
-
-PAL = {
-    'navy':   '#003f5c', 'blue':  '#2f4b7c', 'coral':  '#f95d6a',
-    'orange': '#ff7c43', 'green': '#2ecc71', 'gray':   '#95a5a6',
-}
 
 def load_and_split() -> tuple[pd.DataFrame, pd.Series, pd.DataFrame, pd.Series]:
     print("=" * 65)
@@ -354,189 +343,6 @@ def evaluate_on_test(
                                     zero_division=0))
     return test_results
 
-def plot_cv_metrics(cv_results: dict) -> None:
-    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    metrics     = ['accuracy', 'f1', 'recall', 'precision', 'roc_auc']
-    model_names = list(cv_results.keys())
-    colors      = [PAL['navy'], PAL['blue'], PAL['coral']]
-    x     = np.arange(len(metrics))
-    width = 0.25
-    fig, ax = plt.subplots(figsize=(13, 6))
-
-    for i, (mname, color) in enumerate(zip(model_names, colors)):
-        means = [cv_results[mname][m][0] for m in metrics]
-        stds  = [cv_results[mname][m][1] for m in metrics]
-        bars  = ax.bar(x + i * width, means, width, label=mname,
-                       color=color, alpha=0.85, yerr=stds,
-                       capsize=4, error_kw={'linewidth': 1.2})
-        for bar, mean in zip(bars, means):
-            ax.text(bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() + 0.01,
-                    f'{mean:.3f}', ha='center', va='bottom',
-                    fontsize=7.5, fontweight='bold')
-
-    ax.set_xticks(x + width)
-    ax.set_xticklabels([m.replace('_', '\n') for m in metrics], fontsize=10)
-    ax.set_ylim(0, 1.15)
-    ax.set_ylabel('Score', fontsize=11)
-    ax.set_title(
-        f'Figure M1. Cross-Validation Metrics ({N_CV_SPLITS}-fold TimeSeriesSplit)',
-        fontsize=13, fontweight='bold')
-    ax.legend(fontsize=10)
-    ax.grid(axis='y', alpha=0.35)
-    ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f'))
-
-    out = PLOTS_DIR / 'M1_cv_metrics.png'
-    fig.savefig(out, dpi=200, bbox_inches='tight', facecolor='white')
-    plt.close()
-    print(f"  Saved: {out}")
-
-def plot_confusion_matrices(test_results: dict, y_test: pd.Series) -> None:
-    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-    model_names = list(test_results.keys())
-    fig, axes   = plt.subplots(1, 3, figsize=(17, 5))
-
-    for ax, name in zip(axes, model_names):
-        cm   = confusion_matrix(y_test, test_results[name]['y_pred'])
-        disp = ConfusionMatrixDisplay(cm, display_labels=['no alarm', 'alarm'])
-        disp.plot(ax=ax, colorbar=False, cmap='Blues')
-        f1  = test_results[name]['f1']
-        auc = test_results[name]['roc_auc']
-        ax.set_title(f'{name}\nF1={f1:.3f}  AUC={auc:.3f}',
-                     fontsize=11, fontweight='bold')
-
-    plt.suptitle('Figure M2. Confusion Matrices — TEST set (Last 30 Days)',
-                 fontsize=13, fontweight='bold', y=1.03)
-    out = PLOTS_DIR / 'M2_confusion_matrices.png'
-    fig.savefig(out, dpi=200, bbox_inches='tight', facecolor='white')
-    plt.close()
-    print(f"  Saved: {out}")
-
-def plot_rf_feature_importance(rf_model, feature_names: list,
-                                top_n: int = 20) -> None:
-    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-    importances    = rf_model.feature_importances_
-    sorted_indices = np.argsort(importances)[::-1]
-    top_indices    = sorted_indices[:top_n]
-    top_names      = [feature_names[i] for i in top_indices]
-    top_vals       = importances[top_indices]
-
-    def _feat_color(name):
-        if 'lag' in name or 'last_24' in name or 'momentum' in name:
-            return PAL['coral']
-        if any(w in name for w in ['visibility', 'wind', 'temp', 'precip',
-                                    'humidity', 'cloud', 'pressure', 'snow',
-                                    'rain', 'freezing', 'night', 'weather', 'energy']):
-            return PAL['orange']
-        if any(w in name for w in ['isw', 'attack', 'ground', 'casualty',
-                                    'intensity', 'sources']):
-            return PAL['navy']
-        if name.startswith('tfidf_'):
-            return PAL['blue']
-        return PAL['gray']
-
-    colors = [_feat_color(n) for n in top_names]
-
-    fig, ax = plt.subplots(figsize=(11, 7))
-    bars = ax.barh(range(top_n), top_vals[::-1], color=colors[::-1], alpha=0.85)
-    ax.set_yticks(range(top_n))
-    ax.set_yticklabels(top_names[::-1], fontsize=9)
-    ax.set_xlabel('Feature Importance (MDI)', fontsize=11)
-    ax.set_title('Figure M5. Random Forest — Top-20 Feature Importances',
-                 fontsize=13, fontweight='bold')
-    ax.grid(axis='x', alpha=0.3)
-
-    hypothesis_features = {
-        'alarm_lag_1h':              'H1: Short-term alarm persistence',
-        'alarms_last_24h':           'H2: Wave fatigue / quiet-before-storm duality',
-        'n_regions_alarm_momentum':  'H3: Attack spread velocity',
-        'isw_intensity_growth':      'H4: ISW media escalation precedes strikes',
-        'energy_infra_stress':       'H5: Cold night energy grid vulnerability',
-        'low_visibility':            'H6: AD blind spot (fog/low clouds)',
-        'temp_drop_last_3d':         'H7: Cold snap grid stress',
-        'isw_report_length':         'H8: ISW report length as activity proxy',
-    }
-    for bar, name in zip(reversed(list(bars)), top_names[::-1]):
-        if name in hypothesis_features:
-            ax.text(bar.get_width() + 0.0005,
-                    bar.get_y() + bar.get_height() / 2,
-                    f'← {hypothesis_features[name]}',
-                    va='center', fontsize=7.5, color=PAL['navy'], style='italic')
-
-    legend_patches = [
-        plt.Rectangle((0, 0), 1, 1, color=PAL['coral'],  alpha=0.85, label='Alarm lag features'),
-        plt.Rectangle((0, 0), 1, 1, color=PAL['orange'], alpha=0.85, label='Weather features'),
-        plt.Rectangle((0, 0), 1, 1, color=PAL['navy'],   alpha=0.85, label='ISW features'),
-        plt.Rectangle((0, 0), 1, 1, color=PAL['blue'],   alpha=0.85, label='TF-IDF features'),
-    ]
-    ax.legend(handles=legend_patches, fontsize=9, loc='lower right')
-
-    out = PLOTS_DIR / 'M5_rf_feature_importance.png'
-    fig.savefig(out, dpi=200, bbox_inches='tight', facecolor='white')
-    plt.close()
-    print(f"  Saved: {out}")
-
-    print(f"\n  Hypothesis check (feature in top-{top_n}):")
-    for feat, hyp in hypothesis_features.items():
-        if feat in feature_names:
-            feat_idx = feature_names.index(feat)
-            rank     = int(np.where(sorted_indices == feat_idx)[0][0]) + 1
-            status   = (f"rank #{rank}" if rank <= top_n
-                        else f"NOT in top-{top_n} (rank #{rank})")
-        else:
-            status = "DROPPED BEFORE TRAIN"
-        print(f"    {feat:25s}  {status:35s}  {hyp}")
-
-def plot_linear_coefficients(model, feature_names: list,
-                              model_name: str, file_prefix: str,
-                              top_n: int = 20) -> None:
-    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    if 'lr' in model.named_steps:
-        coefs = model.named_steps['lr'].coef_
-    elif 'logreg' in model.named_steps:
-        coefs = model.named_steps['logreg'].coef_[0]
-    else:
-        print(f"  WARNING: cannot extract coefficients for {model_name}")
-        return
-
-    abs_coefs      = np.abs(coefs)
-    sorted_indices = np.argsort(abs_coefs)[::-1][:top_n]
-    top_names      = [feature_names[i] for i in sorted_indices]
-    top_vals       = coefs[sorted_indices]
-
-    def _feat_color(name):
-        if 'lag' in name or 'last_24' in name or 'momentum' in name:
-            return PAL['coral']
-        if any(w in name for w in ['visibility', 'wind', 'temp', 'precip',
-                                    'humidity', 'cloud', 'pressure', 'snow',
-                                    'rain', 'freezing', 'night', 'weather', 'energy']):
-            return PAL['orange']
-        if any(w in name for w in ['isw', 'attack', 'ground', 'casualty',
-                                    'intensity', 'sources']):
-            return PAL['navy']
-        if name.startswith('tfidf_'):
-            return PAL['blue']
-        return PAL['gray']
-
-    colors = [_feat_color(n) for n in top_names]
-
-    fig, ax = plt.subplots(figsize=(11, 7))
-    ax.barh(range(top_n), top_vals[::-1], color=colors[::-1], alpha=0.85)
-    ax.set_yticks(range(top_n))
-    ax.set_yticklabels(top_names[::-1], fontsize=9)
-    ax.set_xlabel('Coefficient Weight (Standardized)', fontsize=11)
-    ax.set_title(f'Figure {file_prefix}. {model_name} — Top-{top_n} Feature Weights',
-                 fontsize=13, fontweight='bold')
-    ax.grid(axis='x', alpha=0.3)
-    ax.axvline(0, color='black', linewidth=0.8)
-
-    out = PLOTS_DIR / f'{file_prefix}_{model_name.replace(" ", "_").lower()}_features.png'
-    fig.savefig(out, dpi=200, bbox_inches='tight', facecolor='white')
-    plt.close()
-    print(f"  Saved: {out}")
-
 def save_report(
         cv_results:    dict,
         test_results:  dict,
@@ -653,16 +459,8 @@ def train() -> None:
     test_results = evaluate_on_test(models, x_tests, y_test)
 
     print("\n" + "=" * 65)
-    print("STEP 6/6: Plots & Report")
+    print("STEP 6/6: Save Report")
     print("=" * 65)
-    PLOTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    plot_cv_metrics(cv_results)
-    plot_confusion_matrices(test_results, y_test)
-
-    plot_linear_coefficients(lr_model,  feature_names,       "Linear Regression",   "M3")
-    plot_linear_coefficients(log_model, feature_names_logreg, "Logistic Regression", "M4")
-    plot_rf_feature_importance(rf_model, feature_names, top_n=20)
 
     save_report(cv_results, test_results, best_params_all,
                 feature_names, len(feature_names_logreg), train_cutoff)
@@ -688,7 +486,6 @@ def train() -> None:
     print()
     print(f"CV metrics & best params → {REPORT_TXT}")
     print(f"Models  → {MODELS_DIR}/")
-    print(f"Plots   → {PLOTS_DIR}/")
     print("=" * 65)
 
 if __name__ == "__main__":
