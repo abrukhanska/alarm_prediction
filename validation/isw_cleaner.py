@@ -56,6 +56,233 @@ TFIDF_MAX_FEATURES = 5000
 TFIDF_MIN_DF       = 5
 TFIDF_MAX_DF       = 0.95
 
+
+# Source network features
+# Based on data from isw_sources_scraper. Focuses on link structure between sources, not report text.
+# real_dead_ratio — share of actually dead links (excluding bot blocks)
+# blackout_score — combined indicator of source disappearance
+# ru_ua_balance — balance between RU and UA mentions (-1 to 1)
+# ru_official_ratio — share of official Russian sources
+# All metrics are ratios, so they don’t depend on total source count.
+
+_DOM_RU_OFFICIAL = {
+    "tass.ru", "tass.com", "tass",
+    "ria.ru", "ria",
+    "rt.com", "rt.ru",
+    "kremlin.ru", "kremlin",
+    "mil.ru",
+    "interfax.ru", "interfax",
+    "rbc.ru", "rbc",
+    "iz.ru", "iz",
+    "kommersant.ru", "kommersant",
+    "lenta.ru", "lenta",
+    "vedomosti.ru", "vedomosti",
+    "mid.ru", "mid",
+}
+
+_TG_RU_MILBLOGGER = {
+    "dnevnikdesantnika", "mod_russia", "rybar", "boris_rozhin",
+    "dva_majors", "tass_agency", "rvvoenkor", "wargonzo",
+    "voenkorkotenok", "voin_dv", "creamy_caprice", "milinfolive",
+    "z_arhiv", "rusich_army", "nm_dnr", "severnnyi", "vrogov",
+    "epoddubny", "readovkanews", "yurasumy", "notes_veterans",
+    "grey_zone", "kommunist", "sashakots", "motopatriot78", "motopatriot",
+    "neoficialniybezsonov", "modmilby", "luhanskavtsa", "sladkov_plus",
+    "mid_russia", "strelkovii", "concordgroup_official", "rkadyrov_95",
+    "m0sc0wcalling", "negumanitarnaya_pomosch_z", "ngp_razvedka",
+    "vysokygovorit", "saldo_vga",
+}
+
+_TG_UA = {
+    "kpszsu", "air_forces_ua", "airdefense_ua",
+    "generalstaffzsu", "zvizdecmanhustu",
+    "wararchive_ua", "synegubov", "hueviyherson",
+    "sjtf_odes", "andriyshtime", "dnipropetrovskaoda",
+    "khortytsky_wind", "zoda_gov_ua", "v_zelenskiy_official",
+    "vchkogpu", "stranaua", "butusovplus", "bratchuk_sergey",
+    "mobilizationnews",
+}
+
+_FB_UA_DEFENSE = {
+    "generalstaff.ua", "operationalcommandsouth", "okpivden",
+    "defenceintelligenceofukraine", "presscentrtavria",
+    "cincafofukraine", "cincafu", "kpszsu",
+    "jointforcescommandafu", "easternforces", "pvkpivden", "pvkshid",
+}
+
+# Sites that block scrapers. Errors here are NOT dead links
+_SOCIAL_BLOCKERS = {
+    "facebook.com", "fb.com", "instagram.com", "linkedin.com", "tiktok.com",
+    "suspilne", "suspilne.media", "suspilne.com",
+    "reuters.com",
+    "tass", "tass.ru", "tass.com",
+    "armyinform", "armyinform.com", "armyinform.com.ua",
+    "meduza", "meduza.io",
+    "kremlin", "kremlin.ru",
+    "ria", "ria.ru",
+    "rbc", "rbc.ru",
+    "kommersant", "kommersant.ru",
+    "interfax", "interfax.ru",
+    "gur.gov", "gur.gov.ua",
+    "washingtonpost.com",
+    "wsj.com",
+    "belta", "belta.by",
+    "iz", "iz.ru",
+}
+
+_SKIP_DOMAINS = {
+    "understandingwar.org", "isw.pub", "iswresearch.org",
+    "storymaps.arcgis.com", "arcgis.com",
+    "understandingwar.maps.arcgis.com", "arcg.is",
+}
+
+
+def _src_domain(url: str) -> str:
+    try:
+        d = urlparse(url).netloc.lower()
+        return d[4:] if d.startswith("www.") else d
+    except Exception:
+        return ""
+
+def _dom_match(dom: str, domain_set: set) -> bool:
+    if not dom:
+        return False
+    if dom in domain_set:
+        return True
+    return any(dom.endswith("." + d) for d in domain_set if "." in d)
+
+def _tg_nick(url: str):
+    m = re.search(r't\.me/(?:s/)?([a-zA-Z0-9_]+)(?:/\d+)?', url)
+    if m:
+        n = m.group(1).lower()
+        if n not in {"joinchat", "addstickers", "share", "invoice", "bot"}:
+            return n
+    return None
+
+def _fb_page(url: str):
+    m = re.search(r'facebook\.com/([a-zA-Z0-9_.]+)', url)
+    if m:
+        p = m.group(1).lower()
+        if p not in {"watch", "share", "photo", "reel", "story.php",
+                     "permalink.php", "general", "video", "groups", "events"}:
+            return p
+    return None
+
+
+def load_sources(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    issues = []
+
+    src_cols_orig = [
+        "isw_sources_count", "sources_resolved",
+        "sources_dead", "sources_blocked", "unique_domains",
+    ]
+    src_cols_new = [
+        "real_dead_ratio",  # dead links / total  (bot-blocked sites excluded)
+        "blackout_score",  # real_dead_ratio + blocked_ratio
+        "ru_ua_balance",  # (RU − UA) / (RU + UA)  ∈ [−1, +1]
+        "ru_official_ratio",  # Kremlin/MoD/TASS / total  ∈ [0, 1]
+    ]
+
+    all_new_cols = src_cols_orig + src_cols_new
+
+    if not ISW_SOURCES_DIR.exists() or not list(ISW_SOURCES_DIR.glob("*.json")):
+        issues.append("SOURCES: dir not found or empty — filling with 0")
+        for col in all_new_cols:
+            df[col] = 0
+        return df, issues
+
+    source_files = sorted(ISW_SOURCES_DIR.glob("*.json"))
+    print(f"  Found {len(source_files)} source files")
+    records = []
+
+    for fp in source_files:
+        try:
+            data = json.loads(fp.read_text(encoding="utf-8"))
+            date_str = data.get("report_date", fp.stem)
+            if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
+                continue
+
+            sources_list = data.get("sources", [])
+            n_total = max(data.get("sources_count", len(sources_list)), 1)
+            n_blocked = data.get("blocked_count", 0)
+
+            domains = set()
+            n_ru_tg = 0
+            n_ua_tg = 0
+            n_ua_fb = 0
+            n_ru_off = 0
+            n_real_dead = 0
+
+            for src in sources_list:
+                url = src.get("url", "")
+                status = src.get("status", "")
+                dom = _src_domain(url)
+
+                if dom:
+                    domains.add(dom)
+
+                if _dom_match(dom, _SKIP_DOMAINS):
+                    continue
+
+                is_tg = "t.me" in dom or "telegram.me" in dom
+                is_fb = "facebook.com" in dom or "fb.com" in dom
+
+                if status in ("dead_link", "timeout", "connection_error", "error"):
+                    if not _dom_match(dom, _SOCIAL_BLOCKERS):
+                        n_real_dead += 1
+
+                if is_tg:
+                    nick = _tg_nick(url)
+                    if nick:
+                        if nick in _TG_RU_MILBLOGGER:
+                            n_ru_tg += 1
+                        elif nick in _TG_UA:
+                            n_ua_tg += 1
+                elif is_fb:
+                    page = _fb_page(url)
+                    if page and page in _FB_UA_DEFENSE:
+                        n_ua_fb += 1
+                else:
+                    if _dom_match(dom, _DOM_RU_OFFICIAL):
+                        n_ru_off += 1
+
+            real_dead_ratio = n_real_dead / n_total
+            blackout = real_dead_ratio + (n_blocked / n_total)
+            n_ru = n_ru_tg + n_ru_off
+            n_ua = n_ua_tg + n_ua_fb
+            ru_ua_bal = (n_ru - n_ua) / max(n_ru + n_ua, 1)
+            ru_official_ratio = n_ru_off / n_total
+
+            records.append({
+                "date": pd.Timestamp(date_str),
+                "isw_sources_count": data.get("sources_count", len(sources_list)),
+                "sources_resolved": data.get("resolved_count", 0),
+                "sources_dead": data.get("dead_count", 0),
+                "sources_blocked": n_blocked,
+                "unique_domains": len(domains),
+                "real_dead_ratio": round(real_dead_ratio, 4),
+                "blackout_score": round(blackout, 4),
+                "ru_ua_balance": round(ru_ua_bal, 4),
+                "ru_official_ratio": round(ru_official_ratio, 4),
+            })
+
+        except Exception as e:
+            issues.append(f"SOURCE: {fp.name} — {e}")
+
+    if records:
+        df = df.merge(pd.DataFrame(records), on="date", how="left")
+        for col in all_new_cols:
+            if col in df.columns:
+                df[col] = df[col].fillna(0)
+        zero = (df["isw_sources_count"] == 0).sum()
+        if zero:
+            issues.append(f"SOURCES: {zero} reports with 0 sources")
+    else:
+        for col in all_new_cols:
+            df[col] = 0
+
+    return df, issues
+
 def _normalize_weapons(text: str) -> str:
     return re.sub(r'(?<=[a-zA-Z0-9])-(?=[0-9])', '', text)
 
@@ -179,62 +406,6 @@ def load_texts() -> tuple[pd.DataFrame, dict[str, str], list[str]]:
         issues.append(f"DUPLICATES: removed {before - len(df)}")
     return df, texts, issues
 
-def load_sources(df: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-    issues  = []
-    src_cols = ["isw_sources_count", "sources_resolved",
-                "sources_dead", "sources_blocked", "unique_domains"]
-    if not ISW_SOURCES_DIR.exists() or not list(ISW_SOURCES_DIR.glob("*.json")):
-        issues.append("SOURCES: dir not found or empty — filling with 0")
-        for col in src_cols:
-            df[col] = 0
-        return df, issues
-
-    source_files = sorted(ISW_SOURCES_DIR.glob("*.json"))
-    print(f"  Found {len(source_files)} source files")
-    records = []
-
-    for fp in source_files:
-        try:
-            data     = json.loads(fp.read_text(encoding="utf-8"))
-            date_str = data.get("report_date", fp.stem)
-            if not re.match(r"^\d{4}-\d{2}-\d{2}$", date_str):
-                continue
-
-            sources_list = data.get("sources", [])
-            domains = set()
-            for src in sources_list:
-                try:
-                    d = urlparse(src.get("url", "")).netloc.lower()
-                    if d:
-                        domains.add(d)
-                except Exception as e:
-                    issues.append(f"SOURCE URL parse error in {fp.name}: {e}")
-
-            records.append({
-                "date":              pd.Timestamp(date_str),
-                "isw_sources_count": data.get("sources_count", len(sources_list)),
-                "sources_resolved":  data.get("resolved_count", 0),
-                "sources_dead":      data.get("dead_count", 0),
-                "sources_blocked":   data.get("blocked_count", 0),
-                "unique_domains":    len(domains),
-            })
-        except Exception as e:
-            issues.append(f"SOURCE: {fp.name} — {e}")
-
-    if records:
-        df = df.merge(pd.DataFrame(records), on="date", how="left")
-        for col in src_cols:
-            if col in df.columns:
-                df[col] = df[col].fillna(0).astype(int)
-        zero = (df["isw_sources_count"] == 0).sum()
-        if zero:
-            issues.append(f"SOURCES: {zero} reports with 0 sources")
-    else:
-        for col in src_cols:
-            df[col] = 0
-
-    return df, issues
-
 def check_gaps(df: pd.DataFrame) -> list[str]:
     issues   = []
     all_d    = pd.date_range(df.date.min(), df.date.max(), freq="D")
@@ -314,8 +485,13 @@ def process():
     print("=" * 65)
     df, issues = load_sources(df)
     all_issues.extend(issues)
-    print(f"  Sources avg: {df.isw_sources_count.mean():.1f}")
-    print(f"  Issues:      {len(issues)}")
+    print(f"  Sources avg:        {df.isw_sources_count.mean():.1f}")
+    if "real_dead_ratio" in df.columns:
+        print(f"  real_dead_ratio avg:{df.real_dead_ratio.mean():.4f}")
+        print(f"  blackout_score avg: {df.blackout_score.mean():.4f}")
+        print(f"  ru_ua_balance avg:  {df.ru_ua_balance.mean():.4f}")
+        print(f"  ru_official_ratio:  {df.ru_official_ratio.mean():.4f}")
+    print(f"  Issues:             {len(issues)}")
 
     print("\n" + "=" * 65)
     print("  STEP 3/6: Date gap analysis")
@@ -348,13 +524,19 @@ def process():
     print("=" * 65)
 
     feature_cols = [
-        "date", "isw_report_length", "word_count", "sentence_count",
+        "date",
+        "isw_report_length", "word_count", "sentence_count",
         "paragraph_count", "avg_sentence_length",
         "isw_sources_count", "sources_resolved", "sources_dead",
         "sources_blocked", "unique_domains",
+        "real_dead_ratio",
+        "blackout_score",
+        "ru_ua_balance",
+        "ru_official_ratio",
         "attack_mentions", "ground_mentions", "casualty_mentions",
         "total_intensity", "intensity_per_1000",
     ]
+
     available = [c for c in feature_cols if c in df.columns]
 
     for col in available:
