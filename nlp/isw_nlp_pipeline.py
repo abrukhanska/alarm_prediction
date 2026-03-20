@@ -127,8 +127,10 @@ def build_merge_features(df: pd.DataFrame) -> pd.DataFrame:
         "date",
         "isw_report_length", "word_count", "sentence_count", "paragraph_count",
         "avg_sentence_length", "isw_sources_count", "sources_resolved",
-        "sources_dead", "sources_blocked", "unique_domains", "attack_mentions",
-        "ground_mentions", "casualty_mentions", "total_intensity", "intensity_per_1000"
+        "sources_dead", "sources_blocked", "unique_domains",
+        "real_dead_ratio", "blackout_score", "ru_ua_balance", "ru_official_ratio",
+        "attack_mentions", "ground_mentions", "casualty_mentions",
+        "total_intensity", "intensity_per_1000",
     ]
 
     available = [c for c in cols_for_model if c in df.columns]
