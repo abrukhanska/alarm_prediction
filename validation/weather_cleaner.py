@@ -28,7 +28,7 @@ UKRAINE_LAT = (44.0, 53.0)
 UKRAINE_LON = (22.0, 41.0)
 
 WAR_START   = pd.Timestamp("2022-02-24")
-DATA_CUTOFF = pd.Timestamp("2026-03-10")
+DATA_CUTOFF = pd.Timestamp("2026-03-16")
 
 DAILY_SKIP = {'latitude', 'longitude', 'city'}
 
