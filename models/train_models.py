@@ -224,7 +224,7 @@ def train_logistic_regression(X_train: pd.DataFrame, y_train: pd.Series,
                 * len(param_grid['logreg__penalty']))
     print(f"  Grid: {n_combos} combos x {N_CV_SPLITS} folds = {n_combos * N_CV_SPLITS} fits")
     grid_search = GridSearchCV(pipeline, param_grid, cv=tscv, scoring='roc_auc',
-                               n_jobs=1, verbose=1, refit=True, return_train_score=False)
+                               n_jobs=2, verbose=1, refit=True, return_train_score=False)
     grid_search.fit(X_train, y_train)
     best_params = grid_search.best_params_
     best_model  = grid_search.best_estimator_
@@ -256,7 +256,7 @@ def train_random_forest(
     print("  max_depth=[10, 15, 20]: balances depth vs overfitting on sparse TF-IDF")
     param_grid = {
         'n_estimators':      [100, 200],
-        'max_depth':         [10, 15, 20],
+        'max_depth':         [15, 20],
         'min_samples_split': [10, 20],
         'class_weight':      [None, 'balanced'],
     }
@@ -265,13 +265,13 @@ def train_random_forest(
                 * len(param_grid['min_samples_split'])
                 * len(param_grid['class_weight']))
     print(f"  Grid: {n_combos} combos x {N_CV_SPLITS} folds = {n_combos * N_CV_SPLITS} fits")
-    rf = RandomForestClassifier(random_state=42, n_jobs=1)
+    rf = RandomForestClassifier(random_state=42, n_jobs=2)
     grid_search = GridSearchCV(
         rf,
         param_grid,
         cv=tscv,
         scoring='roc_auc',
-        n_jobs=1,
+        n_jobs=2,
         verbose=1,
         refit=True,
         return_train_score=False,
