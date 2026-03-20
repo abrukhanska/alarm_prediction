@@ -152,7 +152,7 @@ def build_alarm_matrix(df_a: pd.DataFrame, max_hour: pd.Timestamp) -> tuple[pd.D
         .assign(alarm=1)
     )
 
-    mappable = set(WEATHER_TO_ALARM.values())
+    mappable = set(WEATHER_TO_ALARM.values()) | {"Kyiv Oblast"}
     unmapped = df_alarm[~df_alarm["region"].isin(mappable)]["region"].unique()
     if len(unmapped):
         print(f"  regions without weather station (counted in n_regions_alarm, no model rows):")
