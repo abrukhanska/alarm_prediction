@@ -78,10 +78,8 @@ def load_inputs() -> tuple:
     dropped = [c for c in df_w_raw.columns if c not in keep]
     if dropped:
         print(f"  weather: dropping {len(dropped)} non-feature columns")
-
     df_w = df_w_raw[keep].copy()
     df_w["datetime_hour"] = _to_kyiv_naive(pd.to_datetime(df_w["datetime_hour"], utc=False))
-
     core_present = [c for c in WEATHER_CORE_COLS if c in df_w.columns]
     before = len(df_w)
     df_w = df_w.dropna(subset=core_present)
@@ -94,7 +92,6 @@ def load_inputs() -> tuple:
         first_line = f.readline()
     sep = ";" if ";" in first_line else ","
     df_a = pd.read_csv(ALARMS_CSV, sep=sep)
-
     df_a["start_dt"] = _to_kyiv_naive(pd.to_datetime(df_a["start_dt"], utc=False))
     df_a["end_dt"] = _to_kyiv_naive(pd.to_datetime(df_a["end_dt"], utc=False))
     print(f"  alarms:   {df_a.shape}  |  {df_a.region.nunique()} regions")
@@ -103,8 +100,7 @@ def load_inputs() -> tuple:
     if "date" in df_i.columns:
         df_i = df_i.drop(columns=["date"])
     df_i["alarm_date"] = pd.to_datetime(df_i["alarm_date"]).dt.normalize()
-    df_i["alarm_date"] = df_i["alarm_date"] + pd.Timedelta(days=1)
-    print(f"  ISW:      {df_i.shape}  |  {df_i.alarm_date.min().date()} -> {df_i.alarm_date.max().date()}  (shifted +1d, no leakage)")
+    print(f"  ISW:      {df_i.shape}  |  {df_i.alarm_date.min().date()} -> {df_i.alarm_date.max().date()}  (D+1 shift already applied by isw_nlp_pipeline.py)")
 
     tfidf = scipy.sparse.load_npz(TFIDF_NPZ)
     with open(TFIDF_VOCAB, "r", encoding="utf-8") as f:
@@ -120,10 +116,9 @@ def build_alarm_matrix(df_a: pd.DataFrame, max_hour: pd.Timestamp) -> tuple[pd.D
 
     open_alarms = df_a["end_dt"].isna().sum()
     if open_alarms:
-        print(f"  open alarms (end_dt=NaN): {open_alarms} → extending to {max_hour}")
+        print(f"  open alarms (end_dt=NaN): {open_alarms} -> extending to {max_hour}")
 
     max_h = max_hour.floor("h")
-
     df_a = df_a.copy()
     df_a["start_h"] = df_a["start_dt"].dt.floor("h")
     end_dt_adj = np.maximum(
@@ -151,7 +146,6 @@ def build_alarm_matrix(df_a: pd.DataFrame, max_hour: pd.Timestamp) -> tuple[pd.D
         .agg(n_regions_alarm=("region", "nunique"))
         .reset_index()
     )
-
     df_alarm = (
         df_expanded
         .drop_duplicates(subset=["region", "datetime_hour"])
@@ -191,7 +185,6 @@ def build_isw_daily(df_i: pd.DataFrame, tfidf: scipy.sparse.csr_matrix, vocab: l
         index=df_i.index,
         columns=[f"tfidf_{v}" for v in vocab],
     )
-
     df_isw_full = pd.concat([df_i, df_tfidf], axis=1)
     print(f"  ISW scalar cols: {len(df_i.columns) - 1}")
     print(f"  TF-IDF cols:     {len(vocab)}")
@@ -250,10 +243,9 @@ def merge_all(
     print(f"  after ISW join:      {df.shape}")
 
     tfidf_col_names = [c for c in df.columns if c.startswith("tfidf_")]
-
     nan_dates = df[df["isw_report_length"].isna()]["datetime_hour"].dt.date.unique()
     if len(nan_dates):
-        print(f"  ISW NaN on {len(nan_dates)} dates → filling with 0")
+        print(f"  ISW NaN on {len(nan_dates)} dates -> filling with 0")
 
     scalar_to_fill = [c for c in ISW_SCALAR_COLS if c in df.columns]
     missing_scalar = set(ISW_SCALAR_COLS) - set(df.columns)
@@ -338,7 +330,7 @@ def validate_and_save(df: pd.DataFrame, train_cutoff: pd.Timestamp, df_a: pd.Dat
         f.write("MERGE REPORT\n" + "=" * 60 + "\n\n")
         f.write(f"Dynamic Cutoff: {train_cutoff.date()} (30-day Sliding Window)\n")
         f.write(f"Max Alarm Date: {df_a['start_dt'].max().date()} (Target Anchor)\n")
-        f.write(f"ISW date shift: +1 day (report N used for alarms on day N+1)\n")
+        f.write(f"ISW date shift: D+1 applied in isw_nlp_pipeline.py (no double-shift)\n")
         f.write(f"Shape:         {df.shape}\n")
         f.write(f"Regions:       {n_regions}\n")
         f.write(f"Hours:         {n_hours:,}\n")
