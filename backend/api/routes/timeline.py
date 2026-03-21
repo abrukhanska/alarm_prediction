@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from ..data.mock_data import get_timeline
+from ..data.real_data import get_timeline
 from ..models.schemas import TimelineResponse
 
 router = APIRouter()

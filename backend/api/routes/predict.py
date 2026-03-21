@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from ..data.mock_data import get_prediction
+from ..data.real_data import get_prediction
 from ..models.schemas import PredictionResponse
 
 router = APIRouter()
