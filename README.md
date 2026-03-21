@@ -122,6 +122,48 @@ alarm_prediction/
 ---
 
 ## Project Resources
-YouTube: https://youtu.be/z88J31f0_rM
-Project Data & Documentation (Google Drive):
-https://drive.google.com/drive/folders/1B8GYn1JL5meLz7me79VUDsR2iXmvvB1-?usp=sharing
+
+
+---
+
+## Team Responsibility List
+
+### Alina Bruhanska — Team Lead / ML Engineer
+
+- **Project Oversight** — Team coordination, code reviews, and Git-flow management.
+- **Data Integration** — Implemented the merge logic (Task 2c) joining Weather, Alarms, and ISW (D+1 shift) into a unified 190k-row matrix.
+- **EDA** — Conducted Exploratory Data Analysis for ISW reports (Task 1c) and NLP features.
+- **NLP Pipeline** — Developed TF-IDF vectorization (500 features), report length extraction, and the D+1 temporal shift (Task 2a).
+- **Feature Engineering** — Engineered 17 key features including `temp_drop_last_3d` and `isw_sources_count` (Task 2b).
+- **Model Training** — Implemented Linear Regression, Logistic Regression, and LightGBM using StandardScaler within a Pipeline to prevent leakage during cross-validation (Task 4).
+- **Infrastructure** — AWS EC2 Cron architecture and ISW sources scraper development.
+- **Frontend** — AEGIS Dashboard architecture (Next.js).
+
+### Anastasiia Yermak — System Architect
+
+- **EDA** — Partial analysis of ISW reports and NLP feature engineering.
+- **Data Partitioning** — Implemented chronological TimeSeriesSplit (Task 3) preserving temporal integrity.
+- **Backend** — Lead backend development using FastAPI.
+- **Reporting** — Final report assembly, documentation, and frontend UI components.
+
+### Milena Mashchenko — Weather Engineer
+
+- **Weather EDA** — Comprehensive EDA for meteorological data (Task 1a), including the "Air Defense Blind Spot" visibility hypothesis and seasonal temperature cycles.
+- **API Integration** — Weather data engineering via Visual Crossing, including data cleaning, normalization, and validation.
+- **Model Interpretation** — Top-20 Feature Importance analysis for all models (Task 5b) with comparative analysis across models.
+
+### Viktoriia Boriak — Data Analyst
+
+- **War Events EDA** — EDA for alarm data (Task 1b), including "Sleep Deprivation" tactic analysis and anomaly detection ("Kurochkin's Easter Eggs").
+- **Merged Data EDA** — EDA on the merged dataset (Task 1d), identifying the "Energy Terror" hypothesis through freezing temperature correlations.
+- **Model Evaluation** — Confusion Matrix analysis (Task 5a) for all models with focus on Recall optimization.
+- **Infrastructure** — AWS EC2 server configuration for model deployment and automated data collection.
+
+---
+
+## Project Resources
+
+| Resource | Link |
+|----------|------|
+| **GitHub Repository** | https://github.com/abrukhanska/alarm_prediction |
+| **Google Drive** | https://drive.google.com/drive/folders/1B8GYn1JL5meLz7me79VUDsR2iXmvvB1-?usp=sharing |**YouTube**|https://youtu.be/z88J31f0_rM
