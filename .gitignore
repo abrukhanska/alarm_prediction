@@ -67,6 +67,7 @@ venv.bak/
 *~
 .spyderproject
 .spyproject
+.project
 .ropeproject
 
 .mypy_cache/
@@ -102,6 +103,7 @@ data/raw/war_events/*
 !data/raw/war_events/.gitkeep
 
 data/processed/*
+data/processed/*.csv
 !data/processed/.gitkeep
 
 data/*.csv
