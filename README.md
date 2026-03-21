@@ -164,6 +164,7 @@ alarm_prediction/
 ## Project Resources
 
 | Resource | Link |
-|----------|------|
-| **GitHub Repository** | https://github.com/abrukhanska/alarm_prediction |
-| **Google Drive** | https://drive.google.com/drive/folders/1B8GYn1JL5meLz7me79VUDsR2iXmvvB1-?usp=sharing |**YouTube**|https://youtu.be/z88J31f0_rM|
+|:---------|:-----|
+| **GitHub Repository** | [github.com/abrukhanska/alarm_prediction](https://github.com/abrukhanska/alarm_prediction) |
+| **Google Drive** | [Project Data & Docs](https://drive.google.com/drive/folders/1B8GYn1JL5meLz7me79VUDsR2iXmvvB1-?usp=sharing) |
+| **Video Presentation** | [Watch on YouTube](https://youtu.be/z88J31f0_rM) |
