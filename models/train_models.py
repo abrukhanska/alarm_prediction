@@ -5,7 +5,6 @@ import warnings
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import (
     accuracy_score, classification_report, f1_score,
@@ -28,11 +27,14 @@ REPORT_TXT   = MODELS_DIR / "training_report.txt"
 
 TARGET_COL            = "alarm"
 N_CV_SPLITS           = 5
-COLS_TO_REMOVE_FROM_X = ['region', 'datetime_hour', TARGET_COL, 'n_regions_alarm']
+COLS_TO_REMOVE_FROM_X = ['region', 'datetime_hour', TARGET_COL, 'n_regions_alarm',
+                         'n_regions_alarm_lag_1h', 'n_regions_alarm_lag_2h', 'n_regions_alarm_lag_3h',
+                         'alarm_lag_1h', 'alarm_lag_2h', 'alarm_lag_3h','n_regions_alarm_momentum'
+                         ]
 
 def load_and_split() -> tuple:
     print("=" * 65)
-    print("STEP 1/7: Load & temporal split")
+    print("STEP 1/6: Load & temporal split")
     print("=" * 65)
     if not FEATURES_CSV.exists():
         print(f"ERROR: {FEATURES_CSV} not found")
@@ -243,62 +245,10 @@ def train_logistic_regression(X_train: pd.DataFrame, y_train: pd.Series,
     print(f"  Saved: {pkl_path}")
     return best_model, cv_summary, best_params, thr
 
-def train_random_forest(
-        X_train: pd.DataFrame,
-        y_train: pd.Series,
-        tscv: TimeSeriesSplit,
-) -> tuple:
-    print("\n" + "=" * 65)
-    print("  MODEL 3: Random Forest  (model of choice)")
-    print("=" * 65)
-    print(f"  Input features: {X_train.shape[1]}  (scalar + tfidf + ohe)")
-    print("  NOTE: no StandardScaler needed — trees are scale-invariant")
-    print("  max_depth=[10, 15, 20]: balances depth vs overfitting on sparse TF-IDF")
-    param_grid = {
-        'n_estimators':      [100, 200],
-        'max_depth':         [15, 20],
-        'min_samples_split': [10, 20],
-        'class_weight':      [None, 'balanced'],
-    }
-    n_combos = (len(param_grid['n_estimators'])
-                * len(param_grid['max_depth'])
-                * len(param_grid['min_samples_split'])
-                * len(param_grid['class_weight']))
-    print(f"  Grid: {n_combos} combos x {N_CV_SPLITS} folds = {n_combos * N_CV_SPLITS} fits")
-    rf = RandomForestClassifier(random_state=42, n_jobs=2)
-    grid_search = GridSearchCV(
-        rf,
-        param_grid,
-        cv=tscv,
-        scoring='roc_auc',
-        n_jobs=2,
-        verbose=1,
-        refit=True,
-        return_train_score=False,
-    )
-    grid_search.fit(X_train, y_train)
-    best_params = grid_search.best_params_
-    best_model  = grid_search.best_estimator_
-    print(f"\n  Best params: {best_params}")
-    print(f"  Best CV AUC: {grid_search.best_score_:.4f}")
-    if best_params.get('class_weight') == 'balanced':
-        print("  NOTE: 'balanced' selected — confirms class imbalance is meaningful")
-    if best_params.get('max_depth') == 15:
-        print("  max_depth=15 selected: deep enough for most signal combinations")
-    cv_summary, oof_scores, oof_labels = _cv_loop(best_model, X_train, y_train, tscv, has_proba=True)
-    _print_cv_summary("Random Forest", cv_summary)
-    thr = _find_optimal_threshold(oof_labels, oof_scores)
-    _save_feature_importance(best_model, X_train.columns.tolist(), "Random Forest")
-    pkl_path = MODELS_DIR / "random_forest.pkl"
-    with open(pkl_path, 'wb') as f:
-        pickle.dump(best_model, f)
-    print(f"  Saved: {pkl_path}")
-    return best_model, cv_summary, best_params, thr
-
 def train_lightgbm(X_train: pd.DataFrame, y_train: pd.Series,
                    tscv: TimeSeriesSplit) -> tuple:
     print("\n" + "=" * 65)
-    print("MODEL 4: LightGBM (all features, early stopping per fold)")
+    print("MODEL 3: LightGBM (all features, early stopping per fold)")
     print("=" * 65)
     pos_weight = (y_train == 0).sum() / max((y_train == 1).sum(), 1)
     print(f"  scale_pos_weight:  {pos_weight:.2f}")
@@ -340,7 +290,7 @@ def train_lightgbm(X_train: pd.DataFrame, y_train: pd.Series,
 def evaluate_on_test(models: dict, x_tests: dict, y_test: pd.Series,
                      thresholds: dict) -> dict:
     print("\n" + "=" * 65)
-    print("STEP 6/7: Evaluate on TEST set (same period for all models)")
+    print("STEP 5/6: Evaluate on TEST set (same period for all models)")
     print("=" * 65)
     test_results = {}
     for name, model in models.items():
@@ -391,7 +341,6 @@ def save_report(cv_results: dict, test_results: dict, best_params: dict,
         f.write(f"Scaler (LinReg):   MaxAbsScaler (preserves TF-IDF sparsity)\n")
         f.write(f"Scaler (LogReg):   StandardScaler (scalar+OHE only, no TF-IDF)\n")
         f.write(f"LGBM iter choice:  last fold best_iteration (closest to future)\n")
-        f.write(f"RF max_depth:      grid [10, 15, 20]\n")
         f.write(f"Dropped from X:    {COLS_TO_REMOVE_FROM_X}\n\n")
         f.write("=" * 60 + "\nCross-Validation Metrics\n" + "=" * 60 + "\n")
         for mname, cv in cv_results.items():
@@ -429,60 +378,50 @@ def train() -> None:
     X_test_no_tfidf  = X_test.drop(columns=tfidf_cols)
 
     print("\n" + "=" * 65)
-    print("STEP 2/7: Train Linear Regression")
+    print("STEP 2/6: Train Linear Regression")
     print("=" * 65)
     lr_model, lr_cv, lr_thr = train_linear_regression(X_train, y_train, tscv)
 
     print("\n" + "=" * 65)
-    print("STEP 3/7: Train Logistic Regression")
+    print("STEP 3/6: Train Logistic Regression")
     print("=" * 65)
     log_model, log_cv, log_params, log_thr = train_logistic_regression(X_train_no_tfidf, y_train, tscv)
 
     print("\n" + "=" * 65)
-    print("STEP 4/7: Train Random Forest")
-    print("=" * 65)
-    rf_model, rf_cv, rf_params, rf_thr = train_random_forest(X_train, y_train, tscv)
-
-    print("\n" + "=" * 65)
-    print("STEP 5/7: Train LightGBM")
+    print("STEP 4/6: Train LightGBM")
     print("=" * 65)
     lgbm_model, lgbm_cv, lgbm_params, lgbm_thr = train_lightgbm(X_train, y_train, tscv)
 
     models = {
         "Linear Regression":   lr_model,
         "Logistic Regression": log_model,
-        "Random Forest":       rf_model,
         "LightGBM":            lgbm_model,
     }
     x_tests = {
         "Linear Regression":   X_test,
         "Logistic Regression": X_test_no_tfidf,
-        "Random Forest":       X_test,
         "LightGBM":            X_test,
     }
     thresholds = {
         "Linear Regression":   lr_thr,
         "Logistic Regression": log_thr,
-        "Random Forest":       rf_thr,
         "LightGBM":            lgbm_thr,
     }
     cv_results = {
         "Linear Regression":   lr_cv,
         "Logistic Regression": log_cv,
-        "Random Forest":       rf_cv,
         "LightGBM":            lgbm_cv,
     }
     best_params_all = {
         "Linear Regression":   {"scaler": "MaxAbsScaler", "features": f"all {len(feature_names)}"},
         "Logistic Regression": dict(log_params, **{"features": f"{len(X_train_no_tfidf.columns)} (TF-IDF excluded)"}),
-        "Random Forest":       dict(rf_params,  **{"features": f"all {len(feature_names)}"}),
         "LightGBM":            dict(lgbm_params, **{"features": f"all {len(feature_names)}"}),
     }
 
     test_results = evaluate_on_test(models, x_tests, y_test, thresholds)
 
     print("\n" + "=" * 65)
-    print("STEP 7/7: Save Report")
+    print("STEP 6/6: Save Report")
     print("=" * 65)
     save_report(cv_results, test_results, best_params_all,
                 feature_names, len(X_train_no_tfidf.columns), train_cutoff)
@@ -509,7 +448,7 @@ def train() -> None:
     print("=" * 65)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train 4 models for alarm prediction")
+    parser = argparse.ArgumentParser(description="Train 3 models for alarm prediction")
     parser.add_argument("--train", action="store_true", help="Run full training pipeline")
     args = parser.parse_args()
     if args.train:
