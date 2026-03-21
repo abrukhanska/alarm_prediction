@@ -10,7 +10,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -113,4 +112,13 @@ data/*.xlsx
 logs/*
 !logs/.gitkeep
 
+models/*.pkl
+models/training_report.txt
+models/*.csv
+
+analysis/plots/models/*.png
+analysis/plots/*.png
+analysis/plots/features/*.png
 test_data/
+
+*.pyc
