@@ -116,6 +116,7 @@ logs/*
 
 models/*.pkl
 models/training_report.txt
+models/*.csv
 
 analysis/plots/models/*.png
 analysis/plots/*.png
