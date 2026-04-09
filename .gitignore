@@ -99,6 +99,9 @@ data/raw/weather/forecast/*
 data/raw/alarms/*
 !data/raw/alarms/.gitkeep
 
+data/raw/telegram/*
+!data/raw/telegram/.gitkeep
+
 data/raw/war_events/*
 !data/raw/war_events/.gitkeep
 
@@ -123,4 +126,6 @@ analysis/plots/*.png
 analysis/plots/features/*.png
 test_data/
 
-*.pyc
+.telethon_session.session
+
+*.pycі
