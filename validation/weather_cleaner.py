@@ -1,43 +1,40 @@
 """
---process     : full reprocess from JSON files in data/raw/weather/historical/
---incremental : append new rows from CSVs in data/raw/weather/new/ to weather_clean.csv
+--process: full reprocess from JSON files in data/raw/weather/historical/
+--incremental: append new rows from CSVs in data/raw/weather/new/ to weather_clean.csv
 """
 import argparse
 import json
 import sys
 from pathlib import Path
 from typing import Any
-
 import numpy as np
 import pandas as pd
 
-PROJECT_ROOT   = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 HISTORICAL_DIR = PROJECT_ROOT / "data" / "raw" / "weather" / "historical"
-NEW_DIR        = PROJECT_ROOT / "data" / "raw" / "weather" / "new"
-OUTPUT_CSV     = PROJECT_ROOT / "data" / "processed" / "weather_clean.csv"
-REPORT_TXT     = PROJECT_ROOT / "data" / "processed" / "weather_processing_report.txt"
+NEW_DIR = PROJECT_ROOT / "data" / "raw" / "weather" / "new"
+OUTPUT_CSV = PROJECT_ROOT / "data" / "processed" / "weather_clean.csv"
+REPORT_TXT = PROJECT_ROOT / "data" / "processed" / "weather_processing_report.txt"
 
 EXPECTED_HOURS = 24
 MAX_FILL_HOURS = 6
-WAR_START      = pd.Timestamp("2022-02-24")
+WAR_START = pd.Timestamp("2022-02-24")
 
-RANGES = {"hour_temp":       (-50.0,  50.0),
-          "hour_humidity":   (  0.0, 100.0),
-          "hour_windspeed":  (  0.0, 200.0),
-          "hour_pressure":   (870.0,1084.0),
+RANGES = {"hour_temp": (-50.0,  50.0),
+          "hour_humidity": (  0.0, 100.0),
+          "hour_windspeed": (  0.0, 200.0),
+          "hour_pressure": (870.0,1084.0),
           "hour_cloudcover": (  0.0, 100.0),
           "hour_visibility": (  0.0,  50.0),
-          "hour_winddir":    (  0.0, 360.0),
-          "hour_precip":     (  0.0, 200.0),
-          "hour_windgust":   (  0.0, 300.0),
-          "hour_feelslike":  (-60.0,  60.0)
-}
+          "hour_winddir": (  0.0, 360.0),
+          "hour_precip": (  0.0, 200.0),
+          "hour_windgust": (  0.0, 300.0),
+          "hour_feelslike": (-60.0,  60.0) }
 
 UKRAINE_LAT = (44.0, 53.0)
 UKRAINE_LON = (22.0, 41.0)
 
 DAILY_SKIP = {"latitude", "longitude", "city"}
-
 EXPECTED_REGIONS = ["Vinnytsia", "Lutsk",   "Dnipro",    "Donetsk",  "Zhytomyr",
                     "Uzhgorod",  "Zaporozhye", "Ivano-Frankivsk", "Kyiv",
                     "Kropyvnytskyi", "Lviv", "Mykolaiv", "Odesa",
@@ -56,14 +53,9 @@ CLEAN_DTYPES: dict = {"city_address": "category",
                       "is_snow":      "int8",
                       "hour":         "int8",
                       "day_of_week":  "int8",
-                      "month":        "int8",
-}
+                      "month":        "int8", }
 
-CITY_NORMALIZE: dict[str, str] = {
-    "Zaporizhzhia": "Zaporozhye",
-    "Uzhhorod":     "Uzhgorod",
-    "Uzhgorod":     "Uzhgorod",
-}
+CITY_NORMALIZE: dict[str, str] = {"Zaporizhzhia": "Zaporozhye", "Uzhhorod":     "Uzhgorod", "Uzhgorod":     "Uzhgorod",}
 
 def safe_float(val: Any) -> float | None:
     if val is None:
@@ -84,19 +76,16 @@ def _core_clean(df: pd.DataFrame, errors: list, cutoff: pd.Timestamp) -> pd.Data
     df = df.dropna(subset=["datetime_hour"])
     if len(df) < before:
         errors.append(f"DATETIME: dropped {before - len(df)} unparseable rows")
-
     pre_war = (df["datetime_hour"] < WAR_START).sum()
     if pre_war:
         errors.append(f"PRE-WAR: {pre_war} rows before {WAR_START.date()} - dropped")
         df = df[df["datetime_hour"] >= WAR_START]
-
     future = (df["datetime_hour"] > cutoff).sum()
     if future:
         errors.append(f"FUTURE: {future} rows after {cutoff.date()} - dropped")
         df = df[df["datetime_hour"] <= cutoff]
 
     df["city_address"] = df["city_address"].apply(_normalize_city)
-
     for col in ["city_latitude", "city_longitude"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -108,7 +97,7 @@ def _core_clean(df: pd.DataFrame, errors: list, cutoff: pd.Timestamp) -> pd.Data
         )
         if outside.sum():
             bad = sorted(df.loc[outside, "city_address"].unique())
-            errors.append(f"GEOGRAPHY: {outside.sum()} rows outside Ukraine — {bad}")
+            errors.append(f"GEOGRAPHY: {outside.sum()} rows outside Ukraine - {bad}")
             df = df[~outside]
 
     if "hour_visibility" in df.columns:
@@ -127,9 +116,7 @@ def _core_clean(df: pd.DataFrame, errors: list, cutoff: pd.Timestamp) -> pd.Data
             errors.append(f"FORMAT: {col} - {invalid} non-numeric → NaN")
         outliers = df[col].notna() & ((df[col] < lo) | (df[col] > hi))
         if outliers.sum():
-            errors.append(
-                f"RANGE: {col} - {outliers.sum()} anomalies outside [{lo},{hi}] - NaN"
-            )
+            errors.append(f"RANGE: {col} - {outliers.sum()} anomalies outside [{lo},{hi}] - NaN")
             df.loc[outliers, col] = np.nan
 
     for col in NUMERIC_COLS:
@@ -146,13 +133,11 @@ def _core_clean(df: pd.DataFrame, errors: list, cutoff: pd.Timestamp) -> pd.Data
     dupes = before - len(df)
     if dupes:
         errors.append(f"DUPLICATES: removed {dupes}")
-
     fill_cols = [c for c in RANGES if c in df.columns]
     nans_before = df[fill_cols].isna().sum().sum()
     for col in fill_cols:
         df[col] = df.groupby("city_address", group_keys=False)[col].apply(
-            lambda x: x.ffill(limit=MAX_FILL_HOURS).bfill(limit=MAX_FILL_HOURS)
-        )
+            lambda x: x.ffill(limit=MAX_FILL_HOURS).bfill(limit=MAX_FILL_HOURS))
     nans_after = df[fill_cols].isna().sum().sum()
     filled = nans_before - nans_after
     if filled:
@@ -174,10 +159,8 @@ def _core_clean(df: pd.DataFrame, errors: list, cutoff: pd.Timestamp) -> pd.Data
     df["day_of_week"] = df["datetime_hour"].dt.dayofweek
     df["month"] = df["datetime_hour"].dt.month
     df["is_night"] = (df["hour"] < 6).astype(int)
-    df["season"] = df["month"].map(
-        {12: 1, 1: 1, 2: 1, 3: 2, 4: 2, 5: 2,
-         6: 3, 7: 3, 8: 3, 9: 4, 10: 4, 11: 4}
-    )
+    df["season"] = df["month"].map({12: 1, 1: 1, 2: 1, 3: 2, 4: 2, 5: 2,
+                                    6: 3, 7: 3, 8: 3, 9: 4, 10: 4, 11: 4})
 
     if "hour_conditions" in df.columns:
         cond = df["hour_conditions"].astype(str).str.lower()
@@ -225,19 +208,35 @@ def _load_json_to_df(errors: list) -> pd.DataFrame:
             with open(fp, encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as e:
-            errors.append(f"FILE ERROR: {fp.name} — {e}")
+            errors.append(f"FILE ERROR: {fp.name} - {e}")
             skipped += 1
             continue
 
-        daily_data = data.get("daily", {})
-        if not isinstance(daily_data, dict):
+        if "daily" in data and isinstance(data["daily"], dict):
+            daily_data = data["daily"]
+            day_date = daily_data.get("day_datetime")
+            lat = safe_float(daily_data.get("latitude"))
+            lon = safe_float(daily_data.get("longitude"))
+            hours = data.get("hours", [])
+
+        elif "days" in data and isinstance(data["days"], list) and data["days"]:
+            day_obj = data["days"][0]
+            day_date = day_obj.get("datetime")
+            lat = safe_float(data.get("latitude"))
+            lon = safe_float(data.get("longitude"))
+            hours = day_obj.get("hours", [])
             daily_data = {}
+            for k, v in day_obj.items():
+                if k in ("datetime", "hours"):
+                    continue
+                col = k if k.startswith("day_") else f"day_{k}"
+                daily_data[col] = v
 
-        day_date = daily_data.get("day_datetime")
-        lat = safe_float(daily_data.get("latitude"))
-        lon = safe_float(daily_data.get("longitude"))
+        else:
+            errors.append(f"FORMAT: {fp.name} - unknown JSON structure")
+            skipped += 1
+            continue
 
-        hours = data.get("hours", [])
         if not isinstance(hours, list):
             errors.append(f"FORMAT: {fp.name} - 'hours' is not a list")
             skipped += 1
@@ -259,9 +258,7 @@ def _load_json_to_df(errors: list) -> pd.DataFrame:
                 if key not in row:
                     row[key] = value
             h_time = hour.get("hour_datetime")
-            row["datetime_hour"] = (
-                f"{day_date} {h_time}" if day_date and h_time else h_time
-            )
+            row["datetime_hour"] = (f"{day_date} {h_time}" if day_date and h_time else h_time)
             records.append(row)
 
     if skipped:
@@ -312,7 +309,6 @@ def _load_new_csv(errors: list, cutoff_dt: pd.Timestamp | None = None) -> pd.Dat
 
     if not frames:
         return pd.DataFrame()
-
     df = pd.concat(frames, ignore_index=True)
     print(f"New CSV total rows: {len(df):,}")
     return df
@@ -330,13 +326,13 @@ def _print_summary(df: pd.DataFrame, n_raw: int, errors: list, mode: str) -> Non
     print("-" * 60)
     print(f"WEATHER PROCESSING COMPLETE  [{mode}]")
     print("-" * 60)
-    print(f"Input:      {n_raw:,} rows")
-    print(f"Output:     {df.shape[0]:,} rows × {df.shape[1]} cols")
-    print(f"Regions:    {df['city_address'].nunique()} / {len(EXPECTED_REGIONS)}")
+    print(f"Input: {n_raw:,} rows")
+    print(f"Output: {df.shape[0]:,} rows × {df.shape[1]} cols")
+    print(f"Regions: {df['city_address'].nunique()} / {len(EXPECTED_REGIONS)}")
     print(f"Date range: {df['datetime_hour'].min()} → {df['datetime_hour'].max()}")
-    print(f"Smallest:   {region_counts.idxmin()} ({region_counts.min():,})")
-    print(f"Largest:    {region_counts.idxmax()} ({region_counts.max():,})")
-    print(f"Issues:     {len(errors)}")
+    print(f"Smallest: {region_counts.idxmin()} ({region_counts.min():,})")
+    print(f"Largest: {region_counts.idxmax()} ({region_counts.max():,})")
+    print(f"Issues: {len(errors)}")
     if errors:
         print()
         for i, e in enumerate(errors, 1):
@@ -374,15 +370,14 @@ def _save_report(df: pd.DataFrame, n_raw: int, errors: list, mode: str) -> None:
             f.write("\nIssues:\n")
             for i, e in enumerate(errors, 1):
                 f.write(f"  {i:>3}. {e}\n")
-    print(f"  Report: {REPORT_TXT}")
+    print(f"Report: {REPORT_TXT}")
 
 def process() -> None:
     errors: list[str] = []
     cutoff = pd.Timestamp.now().normalize()
-
-    print(f"\n{'='*65}")
+    print(f"\n{'-'*65}")
     print("WEATHER PROCESSOR  [FULL MODE]")
-    print(f"{'='*65}")
+    print(f"{'-'*65}")
     print(f"Source: {HISTORICAL_DIR}")
     print(f"Cutoff: {cutoff.date()}")
 
@@ -409,9 +404,9 @@ def process_incremental() -> None:
     errors: list[str] = []
     cutoff = pd.Timestamp.now().normalize()
 
-    print(f"\n{'='*65}")
+    print(f"\n{'-'*65}")
     print("WEATHER PROCESSOR  [INCREMENTAL MODE]")
-    print(f"{'='*65}")
+    print(f"{'-'*65}")
 
     if not OUTPUT_CSV.exists():
         print("No existing weather_clean.csv — run --process first.")
@@ -422,7 +417,7 @@ def process_incremental() -> None:
                   if c not in CLEAN_DTYPES}}
     existing = pd.read_csv(OUTPUT_CSV, parse_dates=["datetime_hour"], dtype=_dtypes)
     print(f"Existing rows: {len(existing):,}")
-    print(f"Existing range: {existing['datetime_hour'].min().date()} → "
+    print(f"Existing range: {existing['datetime_hour'].min().date()} - "
           f"{existing['datetime_hour'].max().date()}")
 
     max_existing_dt = existing["datetime_hour"].max()
@@ -442,46 +437,34 @@ def process_incremental() -> None:
 
     print(f"New clean rows: {len(df_new):,}")
 
-    combined = (
-        pd.concat([existing, df_new], ignore_index=True)
-        .drop_duplicates(subset=["city_address", "datetime_hour"], keep="last")
-        .sort_values(["city_address", "datetime_hour"])
-        .reset_index(drop=True)
-    )
+    combined = (pd.concat([existing, df_new], ignore_index=True)
+                  .drop_duplicates(subset=["city_address", "datetime_hour"], keep="last")
+                  .sort_values(["city_address", "datetime_hour"])
+                  .reset_index(drop=True))
     combined.to_csv(OUTPUT_CSV, index=False)
-
     truly_new = len(combined) - len(existing)
 
     if errors:
         print(f"\n  Issues ({len(errors)}):")
         for iss in errors:
-            print(f"    • {iss}")
+            print(f"    . {iss}")
 
-    print(f"\n{'='*65}")
+    print(f"\n{'-'*65}")
     print("INCREMENTAL COMPLETE")
     print(f"New rows added: {truly_new:,}")
-    print(f"Total rows:     {len(combined):,} → {OUTPUT_CSV.name}")
-    print(f"New range max:  {combined['datetime_hour'].max().date()}")
-    print(f"{'='*65}")
+    print(f"Total rows: {len(combined):,} → {OUTPUT_CSV.name}")
+    print(f"New range max: {combined['datetime_hour'].max().date()}")
+    print(f"{'-'*65}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Process weather data → weather_clean.csv",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
-    )
-    parser.add_argument(
-        "--process",
-        action="store_true",
-        help="Full reprocess from JSON files (run once to build base)",
-    )
-    parser.add_argument(
-        "--incremental",
-        action="store_true",
-        help="Append only new CSV rows to existing weather_clean.csv",
-    )
+    parser = argparse.ArgumentParser(description="Process weather data to weather_clean.csv",
+                                     formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     epilog=__doc__,)
+    parser.add_argument("--process", action="store_true",
+                        help="Full reprocess from JSON files (run once to build base)",)
+    parser.add_argument("--incremental", action="store_true",
+                        help="Append only new CSV rows to existing weather_clean.csv",)
     args = parser.parse_args()
-
     if args.process:
         process()
     elif args.incremental:
