@@ -293,7 +293,7 @@ def ohe_regions(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     region_dummies = pd.get_dummies(
-        df['region'], prefix='region', drop_first=True, dtype=np.int8
+        df['region'], prefix='region', drop_first=False, dtype=np.int8
     )
     df = pd.concat([df, region_dummies], axis=1)
     df = df.drop(columns=['region'])
