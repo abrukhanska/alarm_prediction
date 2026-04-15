@@ -12,6 +12,7 @@ export interface PredictionResponse {
     artillery: number;
   };
   updated_at: string;
+  forecast?: Record<string, boolean>;
 }
 
 export interface RegionAlarm {

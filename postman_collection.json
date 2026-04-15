@@ -1,0 +1,45 @@
+{
+  "info": {
+    "name": "AEGIS API Collection",
+    "_postman_id": "aegis-hw4",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Task 7: Update Forecast",
+      "request": {
+        "method": "POST",
+        "url": "http://<EC2_IP>:8000/api/update-forecast",
+        "header": []
+      }
+    },
+    {
+      "name": "Task 8: Get Forecast ALL",
+      "request": {
+        "method": "GET",
+        "url": "http://<EC2_IP>:8000/api/forecast?region=all"
+      }
+    },
+    {
+      "name": "Task 8: Get Forecast ONE Region",
+      "request": {
+        "method": "GET",
+        "url": "http://<EC2_IP>:8000/api/forecast?region=Kyiv%20Oblast"
+      }
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "url": "http://<EC2_IP>:8000/api/health"
+      }
+    },
+    {
+      "name": "Admin: Reload Model",
+      "request": {
+        "method": "POST",
+        "url": "http://<EC2_IP>:8000/admin/reload-model"
+      }
+    }
+  ]
+}
