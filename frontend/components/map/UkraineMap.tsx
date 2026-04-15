@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { ComposableMap, Geographies, Geography } from "react-simple-maps";
+import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps";
 import { AnimatePresence } from "framer-motion";
 import { SHAPE_NAME_TO_ID } from "@/lib/regions";
 import { RegionAlarm } from "@/lib/types";
@@ -9,126 +9,130 @@ import MapTooltip from "./MapTooltip";
 
 const GEO_URL = "/geo/ukraine-adm1.json";
 
+const REGION_LABELS: Record<string, { coords: [number, number], name: string }> = {
+  "kyiv_oblast": { coords: [30.52, 50.45], name: "KYIV" }, // Ставимо напис KYIV замість області
+  "lviv": { coords: [24.03, 49.84], name: "Lviv" },
+  "odesa": { coords: [30.72, 46.48], name: "Odesa" },
+  "kharkiv": { coords: [36.23, 50.00], name: "Kharkiv" },
+  "dnipropetrovsk": { coords: [35.04, 48.46], name: "Dnipro" },
+  "zaporizhzhia": { coords: [35.13, 47.83], name: "Zaporizhzhia" },
+  "donetsk": { coords: [37.80, 48.01], name: "Donetsk" },
+  "luhansk": { coords: [39.30, 48.57], name: "Luhansk" },
+  "kherson": { coords: [32.61, 46.63], name: "Kherson" },
+  "crimea": { coords: [34.10, 44.95], name: "Crimea" },
+  "mykolaiv": { coords: [31.99, 46.97], name: "Mykolaiv" },
+  "vinnytsia": { coords: [28.46, 49.23], name: "Vinnytsia" },
+  "chernihiv": { coords: [31.28, 51.50], name: "Chernihiv" },
+  "poltava": { coords: [34.55, 49.58], name: "Poltava" },
+  "sumy": { coords: [34.79, 50.90], name: "Sumy" },
+  "cherkasy": { coords: [32.05, 49.44], name: "Cherkasy" },
+  "khmelnytskyi": { coords: [26.98, 49.42], name: "Khmelnytskyi" },
+  "zhytomyr": { coords: [28.65, 50.25], name: "Zhytomyr" },
+  "chernivtsi": { coords: [25.93, 48.29], name: "Chernivtsi" },
+  "rivne": { coords: [26.25, 50.61], name: "Rivne" },
+  "ivano_frankivsk": { coords: [24.71, 48.92], name: "Ivano-Frankivsk" },
+  "ternopil": { coords: [25.59, 49.55], name: "Ternopil" },
+  "volyn": { coords: [25.32, 50.74], name: "Lutsk" },
+  "zakarpattia": { coords: [22.28, 48.62], name: "Uzhhorod" },
+  "kirovohrad": { coords: [32.26, 48.50], name: "Kropyvnytskyi" },
+};
+
 interface UkraineMapProps {
-    alarms: RegionAlarm[];
-    selectedRegion: string | null;
-    onSelectRegion: (id: string) => void;
+  alarms: RegionAlarm[];
+  selectedRegion: string | null;
+  onSelectRegion: (id: string) => void;
 }
 
-const THREAT_LEVELS = ["safe", "low", "medium", "high", "critical"] as const;
-
 export default function UkraineMap({ alarms, selectedRegion, onSelectRegion }: UkraineMapProps) {
-    const [tooltip, setTooltip] = useState<{
-        id: string;
-        name: string;
-        x: number;
-        y: number;
-    } | null>(null);
+  const [tooltip, setTooltip] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
+  const alarmMap = new Map(alarms.map((a) => [a.id, a]));
 
-    const alarmMap = new Map(alarms.map((a) => [a.id, a]));
+  const handleHover = (id: string | null, name: string, x: number, y: number) => {
+    if (id) setTooltip({ id, name, x, y });
+    else setTooltip(null);
+  };
 
-    const handleHover = (id: string | null, name: string, x: number, y: number) => {
-        if (id) setTooltip({ id, name, x, y });
-        else setTooltip(null);
-    };
+  return (
+    <div className="relative w-full h-full flex items-center justify-center p-4">
+      <ComposableMap
+        projection="geoMercator"
+        projectionConfig={{ center: [31.5, 48.5], scale: 2300 }}
+        className="w-full h-full max-h-[90vh] object-contain drop-shadow-2xl"
+      >
+        <Geographies geography={GEO_URL}>
+          {({ geographies }) => (
+            <>
+              {geographies.map((geo) => {
+                const shapeName = geo.properties.shapeName as string;
+                const regionId = SHAPE_NAME_TO_ID[shapeName] ?? shapeName;
+                const alarm = alarmMap.get(regionId);
+                const color = threatColor(alarm?.threat_level ?? "safe");
+                const isActive = alarm?.active ?? false;
+                const isSelected = selectedRegion === regionId;
 
-    const tooltipAlarm = tooltip ? alarmMap.get(tooltip.id) : undefined;
+                return (
+                  <Geography
+                    key={geo.rsmKey}
+                    geography={geo}
+                    fill={color}
+                    fillOpacity={isSelected ? 0.9 : isActive ? 0.6 : 0.3}
+                    stroke={isActive ? "#ef4444" : isSelected ? "#06b6d4" : "#1e3a5f"}
+                    strokeWidth={isActive ? 1.5 : isSelected ? 2 : 0.5}
+                    className={isActive ? "pulse-alarm" : ""}
+                    style={{
+                      default: { outline: "none", transition: "all 0.4s ease" },
+                      hover: { outline: "none", fillOpacity: 0.8, cursor: "pointer", stroke: "#06b6d4" },
+                      pressed: { outline: "none" },
+                    }}
+                    onMouseEnter={(e) => handleHover(regionId, shapeName, e.clientX, e.clientY)}
+                    onMouseMove={(e) => handleHover(regionId, shapeName, e.clientX, e.clientY)}
+                    onMouseLeave={() => handleHover(null, "", 0, 0)}
+                    onClick={() => onSelectRegion(regionId)}
+                  />
+                );
+              })}
 
-    return (
-        <div className="relative w-full h-full flex items-center justify-center p-4">
-            <ComposableMap
-                projection="geoMercator"
-                projectionConfig={{
-                    center: [31.5, 48.5],
-                    scale: 2300,
-                }}
-                className="w-full h-full max-h-[90vh] object-contain drop-shadow-2xl"
-                preserveAspectRatio="xMidYMid meet"
-            >
-                <Geographies geography={GEO_URL}>
-                    {({ geographies }) =>
-                        geographies.map((geo) => {
-                            const shapeName = geo.properties.shapeName as string;
-                            const regionId = SHAPE_NAME_TO_ID[shapeName] ?? shapeName;
-                            const alarm = alarmMap.get(regionId);
+              {geographies.map((geo) => {
+                const shapeName = geo.properties.shapeName;
+                const regionId = SHAPE_NAME_TO_ID[shapeName] ?? shapeName;
+                const regionData = REGION_LABELS[regionId];
+                const alarm = alarmMap.get(regionId);
+                if (!regionData) return null;
 
-                            const level = alarm?.threat_level ?? "safe";
-                            const color = threatColor(level);
-                            const isActive = alarm?.active ?? false;
-                            const isSelected = selectedRegion === regionId;
+                return (
+                  <Marker key={`marker-${regionId}`} coordinates={regionData.coords}>
+                    {alarm?.active && (
+                      <g>
+                        <circle r="6" className="radar-circle" />
+                        <circle r="6" className="radar-circle" style={{ animationDelay: '1s' }} />
+                      </g>
+                    )}
+                    <text
+                      textAnchor="middle"
+                      y={2}
+                      className="region-label"
+                      style={{ 
+                        fontSize: regionId === "kyiv_oblast" ? "7px" : "6px", 
+                        fontWeight: "800", 
+                        fill: "#fff", 
+                        pointerEvents: "none"
+                      }}
+                    >
+                      {regionData.name}
+                    </text>
+                  </Marker>
+                );
+              })}
+            </>
+          )}
+        </Geographies>
+      </ComposableMap>
 
-                            const fillOpacity = isSelected ? 0.9 : isActive ? 0.6 : 0.3;
-
-                            return (
-                                <Geography
-                                    key={geo.rsmKey}
-                                    geography={geo}
-                                    fill={color}
-                                    fillOpacity={fillOpacity}
-                                    stroke={isActive ? "#ef4444" : isSelected ? "#06b6d4" : "#1e3a5f"}
-                                    strokeWidth={isActive ? 1.5 : isSelected ? 2 : 0.5}
-                                    className={isActive ? "pulse-alarm" : ""}
-                                    style={{
-                                        default: {
-                                            outline: "none",
-                                            transition: "fill 0.4s ease, stroke 0.3s ease, fill-opacity 0.4s ease",
-                                        },
-                                        hover: {
-                                            outline: "none",
-                                            fill: color,
-                                            fillOpacity: 0.8,
-                                            cursor: "pointer",
-                                            stroke: "#06b6d4",
-                                            strokeWidth: 1.5,
-                                        },
-                                        pressed: { outline: "none" },
-                                    }}
-                                    onMouseEnter={(e: React.MouseEvent) => {
-                                        handleHover(regionId, shapeName, e.clientX, e.clientY);
-                                    }}
-                                    onMouseMove={(e: React.MouseEvent) => {
-                                        handleHover(regionId, shapeName, e.clientX, e.clientY);
-                                    }}
-                                    onMouseLeave={() => handleHover(null, "", 0, 0)}
-                                    onClick={() => onSelectRegion(regionId)}
-                                />
-                            );
-                        })
-                    }
-                </Geographies>
-            </ComposableMap>
-
-            <AnimatePresence>
-                {tooltip && (
-                    <MapTooltip
-                        key={tooltip.id}
-                        x={tooltip.x}
-                        y={tooltip.y}
-                        region={tooltipAlarm}
-                        shapeName={tooltip.name}
-                    />
-                )}
-            </AnimatePresence>
-
-            <div
-                className="absolute bottom-6 right-6 glass-panel p-4 rounded-xl text-xs"
-                style={{ pointerEvents: "none" }}
-            >
-                <p className="font-semibold mb-3 uppercase tracking-wider text-slate-400">
-                    Threat Level
-                </p>
-                {THREAT_LEVELS.map((lvl) => (
-                    <div key={lvl} className="flex items-center gap-3 mb-1.5">
-            <span
-                className="inline-block w-3.5 h-3.5 rounded-sm shadow-md"
-                style={{ backgroundColor: threatColor(lvl), border: `1px solid ${threatColor(lvl)}cc` }}
-            />
-                        <span className="capitalize text-slate-200" style={{ color: lvl === 'safe' ? '#64748b' : '#e2e8f0' }}>
-              {lvl}
-            </span>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
+      <AnimatePresence>
+        {tooltip && (
+          <MapTooltip x={tooltip.x} y={tooltip.y} region={alarmMap.get(tooltip.id)} shapeName={tooltip.name} />
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }

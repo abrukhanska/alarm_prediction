@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from ..data.mock_data import get_stats
+from ..data.real_data import get_stats
 from ..models.schemas import StatsResponse
 
 router = APIRouter()

@@ -4,6 +4,7 @@ and resolves their titles via HTTP requests (with global URL cache).
 """
 
 from __future__ import annotations
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import argparse
 import json
@@ -51,8 +52,6 @@ ISW_DOMAINS = {
     "www.iswresearch.org",
 }
 SKIP_DOMAINS = {
-    "facebook.com", "www.facebook.com", "m.facebook.com",
-    "instagram.com", "www.instagram.com",
     "tiktok.com", "www.tiktok.com",
     "linkedin.com", "www.linkedin.com",
 }
@@ -228,88 +227,94 @@ def _clean_url(url: str) -> str:
     return url
 
 def _find_footnote_section(soup: BeautifulSoup) -> Tag | None:
+    printable = soup.find("div", id="printable-area")
+    if printable:
+        return printable
+
+    field_items = soup.find_all("div", class_="field-item")
+    if field_items:
+        if len(field_items) == 1:
+            return field_items[0]
+        wrapper = soup.new_tag("div", attrs={"class": "merged-content"})
+        for fi in field_items:
+            for child in fi.children:
+                wrapper.append(child.__copy__() if hasattr(child, '__copy__') else child)
+        return wrapper
+
+    content_classes = [
+        "dynamic-entry-content", "entry-content", "node-content",
+        "article-content", "post-content"
+    ]
+    for class_name in content_classes:
+        results = soup.find_all("div", class_=class_name)
+        if results:
+            if len(results) == 1:
+                return results[0]
+            wrapper = soup.new_tag("div")
+            for r in results:
+                for child in r.children:
+                    wrapper.append(child.__copy__() if hasattr(child, '__copy__') else child)
+            return wrapper
+
     for header_text in ["endnote", "footnote", "reference", "source"]:
         for tag in soup.find_all(["h2", "h3", "h4", "p", "strong"]):
             if tag.get_text(strip=True).lower().startswith(header_text):
                 parent = tag.find_parent(["div", "section", "article"])
                 if parent:
                     return parent
-    content_div = soup.find("div", class_="field-item")
-    if content_div:
-        return content_div
+
     for selector in ["article", "main", '[role="main"]']:
         tag = soup.find(selector)
         if tag:
             return tag
+
     return None
 
+
 def extract_urls_from_html(
-    html_path: Path, logger: logging.Logger
+        html_path: Path, logger: logging.Logger
 ) -> list[str]:
     try:
-        html_content = html_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        try:
-            html_content = html_path.read_text(encoding="latin-1")
-            logger.warning(f"Read {html_path.name} with latin-1 fallback")
-        except Exception as e:
-            logger.error(f"Cannot read {html_path.name}: {e}")
-            return []
-    except OSError as e:
-        logger.error(f"Cannot open {html_path.name}: {e}")
+        with open(html_path, 'r', encoding='utf-8', errors='ignore') as f:
+            html_content = f.read()
+    except Exception as e:
+        logger.error(f"Cannot read {html_path.name}: {e}")
         return []
 
     soup = BeautifulSoup(html_content, BS4_PARSER)
-
     content = _find_footnote_section(soup)
+
     if content is None:
-        logger.warning(f"{html_path.name}: Cannot find content section, using full HTML")
         content = soup
 
     raw_urls: list[str] = []
 
     for a_tag in content.find_all("a", href=True):
-        href = a_tag["href"]
-        link_text = a_tag.get_text(strip=True)
+        raw_urls.append(a_tag["href"])
 
-        if RE_FOOTNOTE_MARKER.match(link_text):
-            raw_urls.append(href)
-            continue
-
-        parent_text = ""
-        if a_tag.parent:
-            parent_text = a_tag.parent.get_text(strip=True)
-
-        if RE_FOOTNOTE_MARKER.search(parent_text):
-            raw_urls.append(href)
-            continue
-
-        if a_tag.find_parent("ol") or a_tag.find_parent("li"):
-            raw_urls.append(href)
-            continue
-
-    if not raw_urls:
-        logger.debug(f"{html_path.name}: No footnote links found, using all content links")
-        raw_urls = [a["href"] for a in content.find_all("a", href=True)]
+    full_text = content.get_text()
+    text_urls = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', full_text)
+    raw_urls.extend(text_urls)
 
     seen: set[str] = set()
     unique_urls: list[str] = []
 
     for url in raw_urls:
         url = _clean_url(url)
+
         if not _is_valid_url(url):
             continue
+
         if _is_isw_internal(url):
             continue
+
         if url in seen:
             continue
+
         seen.add(url)
         unique_urls.append(url)
 
-    logger.debug(
-        f"{html_path.name}: {len(raw_urls)} raw footnote hrefs -> "
-        f"{len(unique_urls)} unique external URLs"
-    )
+    logger.debug(f"{html_path.name}: Found {len(unique_urls)} unique external sources")
     return unique_urls
 
 def _extract_title_from_html(html: str) -> str:
@@ -586,13 +591,14 @@ def get_available_html_files() -> list[Path]:
 def _date_from_filename(filepath: Path) -> str:
     return filepath.stem
 
+
 def process_single_report(
-    html_path: Path,
-    session: requests.Session | None,
-    logger: logging.Logger,
-    cache: dict,
-    force: bool = False,
-    skip_resolve: bool = False,
+        html_path: Path,
+        session: requests.Session | None,
+        logger: logging.Logger,
+        cache: dict,
+        force: bool = False,
+        skip_resolve: bool = False,
 ) -> ReportSources:
     date_str = _date_from_filename(html_path)
     report = ReportSources(report_date=date_str, html_file=html_path.name)
@@ -604,12 +610,11 @@ def process_single_report(
         logger.debug(f"{date_str}: No external URLs found")
         return report
 
-    for url in urls:
+    def fetch_url_data(url):
         cachekey = url
-
         if cachekey in cache and not force:
             entry_raw = cache[cachekey]
-            entry = SourceEntry(
+            return SourceEntry(
                 url=entry_raw["url"],
                 title=entry_raw["title"],
                 status=entry_raw["status"],
@@ -618,32 +623,39 @@ def process_single_report(
                 final_url=entry_raw.get("final_url", ""),
                 error_detail=entry_raw.get("error_detail", ""),
             )
+
+        stitle, st_status = _special_title(url)
+        if stitle:
+            return SourceEntry(url=url, title=stitle, status=st_status)
+
+        if not skip_resolve and session is not None:
+            entry = resolve_source_title(url, session, logger)
         else:
-            stitle, st_status = _special_title(url)
-            if stitle:
-                entry = SourceEntry(
-                    url=url, title=stitle, status=st_status,
-                )
-            elif not skip_resolve and session is not None:
-                entry = resolve_source_title(url, session, logger)
-                time.sleep(REQUEST_PAUSE)
-            else:
-                entry = SourceEntry(
-                    url=url, title="[UNRESOLVED]", status="unresolved",
-                )
+            entry = SourceEntry(url=url, title="[UNRESOLVED]", status="unresolved")
 
-            cache[cachekey] = entry.to_dict()
+        return entry
 
-        report.sources.append(entry)
+    with ThreadPoolExecutor(max_workers=15) as executor:
+        future_to_url = {executor.submit(fetch_url_data, url): url for url in urls}
 
-        if entry.status == "ok":
-            report.resolved_count += 1
-        elif entry.status in ("dead_link", "timeout", "connection_error", "error"):
-            report.dead_count += 1
-        elif entry.status == "blocked":
-            report.blocked_count += 1
-        elif entry.status == "non_html":
-            report.non_html_count += 1
+        for future in as_completed(future_to_url):
+            try:
+                entry = future.result()
+
+                cache[entry.url] = entry.to_dict()
+                report.sources.append(entry)
+
+                if entry.status == "ok":
+                    report.resolved_count += 1
+                elif entry.status in ("dead_link", "timeout", "connection_error", "error"):
+                    report.dead_count += 1
+                elif entry.status == "blocked":
+                    report.blocked_count += 1
+                elif entry.status == "non_html":
+                    report.non_html_count += 1
+
+            except Exception as exc:
+                logger.error(f"URL {future_to_url[future]} generated an exception: {exc}")
 
     logger.info(
         f"{date_str}: {report.sources_count} sources | "
@@ -651,7 +663,6 @@ def process_single_report(
         f"blocked={report.blocked_count} non_html={report.non_html_count}"
     )
     return report
-
 
 def process_reports(
     html_files: list[Path],

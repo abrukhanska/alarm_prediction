@@ -10,7 +10,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -68,6 +67,7 @@ venv.bak/
 *~
 .spyderproject
 .spyproject
+.project
 .ropeproject
 
 .mypy_cache/
@@ -99,6 +99,9 @@ data/raw/weather/forecast/*
 data/raw/alarms/*
 !data/raw/alarms/.gitkeep
 
+data/raw/telegram/*
+!data/raw/telegram/.gitkeep
+
 data/raw/war_events/*
 !data/raw/war_events/.gitkeep
 
@@ -122,3 +125,7 @@ analysis/plots/models/*.png
 analysis/plots/*.png
 analysis/plots/features/*.png
 test_data/
+
+.telethon_session.session
+
+*.pyc

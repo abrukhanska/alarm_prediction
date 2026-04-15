@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from ..data.mock_data import get_current_alarms
+from ..data. real_data import get_current_alarms
 from ..models.schemas import AlarmsResponse
 
 router = APIRouter()
