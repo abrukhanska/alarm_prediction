@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from ..data.mock_data import get_weather
+from ..data.real_data import get_weather
 from ..models.schemas import WeatherResponse
 
 router = APIRouter()

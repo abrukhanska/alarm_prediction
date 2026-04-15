@@ -19,8 +19,8 @@ export default function Header({ stats }: HeaderProps) {
                     hour: "2-digit",
                     minute: "2-digit",
                     second: "2-digit",
-                    timeZone: "UTC",
-                }) + " UTC"
+                    // Видалили рядок з UTC, тепер береться час системи (Київ)
+                }) + " KYIV"
             );
         };
         tick();
