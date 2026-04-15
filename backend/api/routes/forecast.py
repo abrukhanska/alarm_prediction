@@ -12,7 +12,7 @@ router = APIRouter()
 PROJECT_ROOT    = Path(__file__).resolve().parent.parent.parent
 PREDICTIONS_DIR = PROJECT_ROOT / "data" / "predictions"
 LATEST_JSON     = PREDICTIONS_DIR / "latest.json"
-PREDICT_SCRIPT  = PROJECT_ROOT / "ml" / "predict_24h.py"
+PREDICT_SCRIPT  = PROJECT_ROOT / "models" / "predict_24h.py"
 
 
 def _run_predict():
@@ -55,6 +55,12 @@ async def get_forecast(region: str = "all"):
     if not LATEST_JSON.exists():
         raise HTTPException(
             status_code=503,
+            detail="Run POST /api/update-forecast first and wait ~30s"
+        )
+
+    if not LATEST_JSON.exists():
+        raise HTTPException(
+            status_code=503,
             detail="Predictions not available yet. Run POST /api/update-forecast first."
         )
 
@@ -92,15 +98,3 @@ async def health():
         "timestamp":           datetime.now(timezone.utc).isoformat(),
         "latest_json_exists":  LATEST_JSON.exists(),
     }
-
-
-@router.post("/admin/reload-model")
-async def reload_model():
-    
-    try:
-        from backend.predict_service import _model_cache
-        _model_cache["model"] = None
-        _model_cache["mtime"] = 0.0
-        return {"status": "ok", "message": "Model cache cleared."}
-    except ImportError:
-        return {"status": "ok", "message": "predict_service not found, skipped."}

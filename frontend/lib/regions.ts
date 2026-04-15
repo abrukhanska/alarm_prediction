@@ -25,5 +25,7 @@ export const SHAPE_NAME_TO_ID: Record<string, string> = {
   "Dnipropetrovsk Oblast": "dnipropetrovsk",
   "Kirovohrad Oblast": "kirovohrad",
   "Kyiv (city)": "kyiv_city",
+  "Kyiv": "kyiv",
+  "Kyiv City": "kyiv",
   "Sevastopol": "sevastopol"
 };
