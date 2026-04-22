@@ -31,37 +31,37 @@ CHANNELS = [
     {
         "username":    "monitorwarr",
         "role":        "strategic_aviation",
-        "description": "RF strategic aviation monitoring — Tu-95/Tu-160 takeoffs and routes",
+        "description": "RF strategic aviation monitoring",
         "priority":    1,
     },
     {
         "username":    "vanek_nikolaev",
         "role":        "tactical_south",
-        "description": "Tactical threats from the south — Shaheds, vectors from Crimea and Black Sea",
+        "description": "Tactical threats from the south",
         "priority":    2,
     },
     {
         "username":    "kpszsu",
         "role":        "official_airforce",
-        "description": "Official Ukrainian Air Force Command — confirmations and shoot-downs",
+        "description": "Official Ukrainian Air Force Command",
         "priority":    3,
     },
     {
         "username":    "GeneralStaff_ua",
         "role":        "official_gsf",
-        "description": "Official General Staff of AFU — operational summaries, mass attacks",
+        "description": "Official General Staff of AFU",
         "priority":    4,
     },
     {
         "username":    "povitryanatrivogaaa",
         "role":        "alarm_aggregator",
-        "description": "Air raid alert aggregator for all regions — activations and cancellations",
+        "description": "Air raid alert aggregator for all regions",
         "priority":    5,
     },
     {
-        "username":    "suspilne_news",
+        "username":    "suspilnenews",
         "role":        "impact_confirmation",
-        "description": "Suspilne News — confirmed strike impacts and consequences",
+        "description": "Suspilne News",
         "priority":    6,
     },
 ]
@@ -93,7 +93,7 @@ def setup_logging() -> logging.Logger:
     return logger
 
 def _make_dedup_hash(channel: str, text: str, raw_datetime: str) -> str:
-    key = f"{channel}|{raw_datetime}|{text[:80]}"
+    key = f"{channel}|{raw_datetime}|{text[:300]}"
     return hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
 
 def load_seen_ids(hours_window: int = 48) -> dict[str, str]:
@@ -110,14 +110,12 @@ def load_seen_ids(hours_window: int = 48) -> dict[str, str]:
     except (json.JSONDecodeError, KeyError, ValueError):
         return {}
 
-
 def save_seen_ids(seen: dict[str, str]) -> None:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     tmp = SEEN_IDS_FILE.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(seen, f, separators=(",", ":"))
     tmp.replace(SEEN_IDS_FILE)
-
 
 def _parse_tme_datetime(time_tag) -> datetime | None:
     if time_tag is None:
@@ -131,7 +129,6 @@ def _parse_tme_datetime(time_tag) -> datetime | None:
     except (ValueError, TypeError):
         return None
 
-
 def _fallback_datetime_from_context(msg_div) -> datetime | None:
     date_link = msg_div.select_one("a.tgme_widget_message_date[href]")
     if date_link:
@@ -143,7 +140,6 @@ def _fallback_datetime_from_context(msg_div) -> datetime | None:
             except (ValueError, OSError):
                 pass
     return None
-
 
 def _extract_text(msg_div) -> str:
     for sel in ("div.tgme_widget_message_text", "div.tgme_widget_message_caption"):
@@ -163,30 +159,30 @@ def _fetch_with_retry(
 ) -> requests.Response | None:
     for attempt in range(1, max_retries + 1):
         try:
-            resp = session.get(url, timeout=15)
+            resp = session.get(url, timeout=10)
 
             if resp.status_code == 200:
                 return resp
 
             if resp.status_code == 429:
-                wait = 30 * attempt
+                wait = 120 * attempt
                 logger.warning(
-                    f"  429 Rate Limit @{channel} (attempt {attempt}/{max_retries})"
-                    f" — waiting {wait}s"
+                    f"  429 Rate Limit @{channel} (attempt {attempt}/{max_retries}) "
+                    f"waiting {wait}s"
                 )
                 time.sleep(wait)
                 continue
 
             if resp.status_code in (403, 404):
                 logger.warning(
-                    f"  HTTP {resp.status_code} @{channel} — channel unavailable, skipping"
+                    f"  HTTP {resp.status_code} @{channel} channel unavailable, skipping"
                 )
                 return None
 
             wait = 5 * attempt
             logger.warning(
-                f"  HTTP {resp.status_code} @{channel}"
-                f" (attempt {attempt}/{max_retries}) — retry in {wait}s"
+                f"  HTTP {resp.status_code} @{channel} "
+                f"(attempt {attempt}/{max_retries}) retry in {wait}s"
             )
             time.sleep(wait)
 
@@ -256,6 +252,10 @@ def scrape_channel(
 
             text = _extract_text(msg_div)
             if not text:
+                logger.warning(
+                    f"@{channel} msg_id={msg_id_int}: text is empty. "
+                    f"Selectors might be outdated."
+                )
                 continue
 
             raw_dt_str  = time_tag.get("datetime", msg_dt.isoformat()) if time_tag else msg_dt.isoformat()
@@ -287,7 +287,7 @@ def scrape_channel(
 
 def get_output_path(dt: datetime) -> Path:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    return RAW_DIR / f"{dt.strftime('%Y-%m-%d_%H')}.jsonl"
+    return RAW_DIR / f"{dt.strftime('%Y-%m-%d')}.jsonl"
 
 def write_messages(messages: list[dict], logger: logging.Logger) -> int:
     if not messages:
@@ -298,7 +298,7 @@ def write_messages(messages: list[dict], logger: logging.Logger) -> int:
         for msg in messages:
             f.write(json.dumps(msg, ensure_ascii=False, separators=(",", ":")) + "\n")
 
-    logger.info(f"  Wrote {len(messages)} lines → {out_path.name}")
+    logger.info(f"  Wrote {len(messages)} lines to {out_path.name}")
     return len(messages)
 
 def collect(hours_back: int, logger: logging.Logger) -> dict:
@@ -309,7 +309,7 @@ def collect(hours_back: int, logger: logging.Logger) -> dict:
     seen_ids     = load_seen_ids(hours_window=dedup_window)
 
     logger.info(f"Collecting last {hours_back}h (cutoff: {cutoff:%Y-%m-%d %H:%M})")
-    logger.info(f"Seen IDs in memory: {len(seen_ids):,}")
+    logger.info(f"Seen IDs in memory: {len(seen_ids)}")
     logger.info(f"Channels to process: {len(CHANNELS)}")
 
     session = requests.Session()
@@ -328,7 +328,6 @@ def collect(hours_back: int, logger: logging.Logger) -> dict:
         "channels_fail": 0,
         "messages_new":  0,
     }
-    all_messages: list[dict] = []
 
     for i, ch_cfg in enumerate(CHANNELS, 1):
         username  = ch_cfg["username"]
@@ -346,7 +345,7 @@ def collect(hours_back: int, logger: logging.Logger) -> dict:
         )
 
         if msgs is not None:
-            all_messages.extend(msgs)
+            write_messages(msgs, logger)
             stats["channels_ok"]  += 1
             stats["messages_new"] += len(msgs)
         else:
@@ -355,28 +354,14 @@ def collect(hours_back: int, logger: logging.Logger) -> dict:
         if i < len(CHANNELS):
             time.sleep(2.0)
 
-    write_messages(all_messages, logger)
     save_seen_ids(seen_ids)
 
     return stats
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="AEGIS Telegram Scraper — Bronze Layer (raw text only)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python scrapers/telegram_scraper.py --hours 1    # cron every 30 min
-  python scrapers/telegram_scraper.py --hours 24   # yesterday + today
-  python scrapers/telegram_scraper.py --hours 720  # 30-day backfill
-
-Next step after collection:
-  python data_processing/telegram_nlp.py --build   # Silver Layer (NLP)
-        """,
-    )
+    parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--hours", type=int, default=1,
-        help="Collect messages from the last N hours (default: 1)",
+        "--hours", type=int, default=1
     )
     args = parser.parse_args()
 
@@ -386,7 +371,7 @@ Next step after collection:
 
     logger = setup_logging()
     logger.info("=" * 60)
-    logger.info(f"TELEGRAM SCRAPER (Bronze) | hours_back={args.hours}")
+    logger.info(f"TELEGRAM SCRAPER | hours_back={args.hours}")
     logger.info("=" * 60)
 
     stats = collect(args.hours, logger)
@@ -394,11 +379,10 @@ Next step after collection:
     logger.info("")
     logger.info("SUMMARY:")
     logger.info(f"  Channels OK:   {stats['channels_ok']}/{len(CHANNELS)}")
-    logger.info(f"  New messages:  {stats['messages_new']:,}")
+    logger.info(f"  New messages:  {stats['messages_new']}")
     if stats["channels_fail"] > 0:
         logger.warning(f"  Errors:        {stats['channels_fail']} channel(s) skipped")
     logger.info("=" * 60)
-    logger.info("Next step: python data_processing/telegram_nlp.py --build (Silver Layer)")
 
 if __name__ == "__main__":
     main()

@@ -16,12 +16,12 @@ from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PROCESSED    = PROJECT_ROOT / "data" / "processed"
 
-INPUT_CSV   = PROCESSED / "isw_clean.csv"
-INPUT_TEXTS = PROCESSED / "isw_texts.json"
+INPUT_PARQUET = PROCESSED / "isw_clean.parquet"
+INPUT_TEXTS   = PROCESSED / "isw_texts.json"
 
 OUT_TFIDF    = PROCESSED / "tfidf_matrix_model.npz"
 OUT_VOCAB    = PROCESSED / "tfidf_vocab_model.json"
-OUT_FEATURES = PROCESSED / "isw_features_for_merge.csv"
+OUT_FEATURES = PROCESSED / "isw_features_for_merge.parquet"
 
 TFIDF_FEATURES = 500   # ML model — 500 reduces noise vs EDA processor's 5000
 
@@ -33,15 +33,14 @@ def load_processed() -> tuple[pd.DataFrame, list[str]]:
     print("  STEP 1/3: Load processed ISW data")
     print("=" * 65)
 
-    missing = [p for p in [INPUT_CSV, INPUT_TEXTS] if not p.exists()]
+    missing = [p for p in [INPUT_PARQUET, INPUT_TEXTS] if not p.exists()]
     if missing:
         print("ERROR: missing input files — run isw_processor.py --process first")
         for p in missing:
             print(f"    {p}")
         sys.exit(1)
 
-    df = pd.read_csv(INPUT_CSV)
-    df["date"] = pd.to_datetime(df["date"])
+    df = pd.read_parquet(INPUT_PARQUET)
 
     with open(INPUT_TEXTS, "r", encoding="utf-8") as f:
         texts = json.load(f)
@@ -61,12 +60,10 @@ def build_ml_tfidf(
     print("=" * 65)
 
     try:
-        alarms_file = PROCESSED / "alarms_clean.csv"
-        with open(alarms_file, 'r', encoding='utf-8') as f:
-            sep = ';' if ';' in f.readline() else ','
-        df_a = pd.read_csv(alarms_file, sep=sep)
-        max_alarm_date = pd.to_datetime(df_a["start_dt"], utc=True).dt.tz_convert("Europe/Kyiv").dt.tz_localize(
-            None).max().floor("D")
+        alarms_file = PROCESSED / "alarms_clean.parquet"
+        df_a = pd.read_parquet(alarms_file)
+        start_dt = pd.to_datetime(df_a["start_dt"])
+        max_alarm_date = start_dt.dt.tz_localize(None).max().floor("D")
     except Exception as e:
         print(f"Warning: Could not read alarms for sync. Using ISW date. {e}")
         max_alarm_date = df["date"].max().floor("D")
@@ -136,7 +133,7 @@ def build_merge_features(df: pd.DataFrame) -> pd.DataFrame:
     available = [c for c in cols_for_model if c in df.columns]
     dropped   = [c for c in cols_for_model if c not in df.columns]
     if dropped:
-        print(f"  NOTE: columns not in isw_clean.csv (skipped): {dropped}")
+        print(f"  NOTE: columns not in isw_clean.parquet (skipped): {dropped}")
 
     df_out = df[available].copy()
 
@@ -165,7 +162,7 @@ def save_all(
         json.dump(vocab, f, ensure_ascii=False)
     print(f"  saved: {OUT_VOCAB}  ({len(vocab)} terms)")
 
-    df_features.to_csv(OUT_FEATURES, index=False)
+    df_features.to_parquet(OUT_FEATURES, index=False, compression="snappy")
     print(f"  saved: {OUT_FEATURES}  {df_features.shape}")
 
 def build() -> None:

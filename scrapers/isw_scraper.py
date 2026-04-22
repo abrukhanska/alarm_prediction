@@ -17,6 +17,8 @@ import re
 import sys
 import time
 import unicodedata
+import tempfile
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
@@ -399,11 +401,20 @@ def extract_text_from_html(html_content: str, logger: logging.Logger) -> str | N
 def _safe_write(filepath: Path, content: str, logger: logging.Logger) -> bool:
     try:
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_text(content, encoding="utf-8")
+        fd, temp_path = tempfile.mkstemp(dir=filepath.parent, text=True)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(temp_path, filepath)
         return True
     except OSError as e:
         logger.error(f"WRITE FAILED: {filepath} - {e}")
         return False
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 def save_html(html: str, date: datetime, logger: logging.Logger) -> Path | None:
     fp = HTML_DIR / f"{date.strftime('%Y-%m-%d')}.html"

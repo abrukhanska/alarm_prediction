@@ -1,11 +1,21 @@
 import json
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
+
+from ..data.real_data import (
+    get_weather,
+    REGION_NAME_TO_SLUG,
+    _live_state,
+    _weather_today,
+)
+
+from ..models.schemas import GodForecastResponse
 
 router = APIRouter()
 
@@ -13,88 +23,186 @@ PROJECT_ROOT    = Path(__file__).resolve().parent.parent.parent
 PREDICTIONS_DIR = PROJECT_ROOT / "data" / "predictions"
 LATEST_JSON     = PREDICTIONS_DIR / "latest.json"
 PREDICT_SCRIPT  = PROJECT_ROOT / "models" / "predict_24h.py"
+RETRAIN_SCRIPT  = PROJECT_ROOT / "models" / "retrain.py"
+VENV_PYTHON     = PROJECT_ROOT / "venv" / "bin" / "python"
 
+def _python_executable() -> str:
+    return str(VENV_PYTHON) if VENV_PYTHON.exists() else sys.executable
 
-def _run_predict():
-    
+def _hhmm(hour_label: str) -> str:
+    if "T" in hour_label:
+        return hour_label[11:16]
+    return hour_label
+
+def _icon(temp: float, precip: float, cloudcover: float) -> str:
+    if temp < 0 and precip > 0.5: return "snow"
+    if precip > 1.0:               return "rain"
+    if precip > 0.2:               return "drizzle"
+    if cloudcover > 70:            return "cloud"
+    if cloudcover > 30:            return "partly-cloudy"
+    return "sun"
+
+def _to_hour_weather(w: dict) -> dict:
+    temp_val   = float(w.get("temp",       0) or 0)
+    precip     = float(w.get("precip",     0) or 0)
+    cloudcover = float(w.get("cloudcover", 0) or 0)
+    return {
+        "temp":       f"+{temp_val:.0f}" if temp_val >= 0 else f"{temp_val:.0f}",
+        "wind":       int(round(float(w.get("windspeed", 0) or 0))),
+        "cloudcover": int(round(cloudcover)),
+        "humidity":   int(round(float(w.get("humidity",  0) or 0))),
+        "precip":     round(precip, 1),
+        "icon":       _icon(temp_val, precip, cloudcover),
+    }
+
+def _run_script(script_path: Path) -> None:
     try:
-        result = subprocess.run(
-            [sys.executable, str(PREDICT_SCRIPT)],
-            capture_output=True,
-            text=True,
-            timeout=120,
+        subprocess.Popen(
+            [_python_executable(), str(script_path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
-        if result.returncode != 0:
-            print(f"[predict] ERROR: {result.stderr[-500:]}")
-        else:
-            print(f"[predict] OK: {result.stdout[-200:]}")
-    except subprocess.TimeoutExpired:
-        print("[predict] TIMEOUT: predict_24h.py не завершився за 120s")
+        print(f"[{script_path.name}] Background process launched successfully.")
     except Exception as e:
-        print(f"[predict] Exception: {e}")
+        print(f"[{script_path.name}] Exception during launch: {e}")
 
+def _run_predict() -> None:
+    _run_script(PREDICT_SCRIPT)
+
+def _run_retrain() -> None:
+    _run_script(RETRAIN_SCRIPT)
+
+@router.get("/api/forecast", response_model=GodForecastResponse)
+async def get_god_forecast():
+    if not LATEST_JSON.exists():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Predictions not yet available. "
+                "POST /api/update-forecast and wait ~30s."
+            ),
+        )
+
+    try:
+        with open(LATEST_JSON, encoding="utf-8") as f:
+            pred_data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Forecast data is being regenerated, try again shortly. ({e})",
+        )
+
+    live = _live_state()
+    live_region_active: dict[str, bool] = {}
+    live_alarms_count: int = 0
+    if live:
+        live_region_active = {
+            name: bool(is_active)
+            for name, is_active in live.get("regions", {}).items()
+        }
+        live_alarms_count = int(live.get("active_alarms_count", 0))
+
+    patched_regions: dict = {}
+
+    for region_name, region_data in pred_data.get("regions", {}).items():
+        slug: str | None = REGION_NAME_TO_SLUG.get(region_name)
+        if slug:
+            live_w       = get_weather(slug)
+            current_temp = float(live_w.get("temp", 0) or 0)
+        else:
+            current_temp = float(region_data.get("current_temp", 0.0))
+
+        patched_hourly = []
+        for item in region_data.get("hourly_data", []):
+            hour_label  = item["hour"]
+            hhmm        = _hhmm(hour_label)
+            raw_w        = get_weather(slug, hour=hhmm) if slug else {}
+            weather_dict = _to_hour_weather(raw_w)
+
+            patched_hourly.append({
+                "hour":        hour_label,
+                "probability": int(item["probability"]),
+                "alarm":       bool(item["alarm"]),
+                "weather":     weather_dict,
+            })
+
+        patched_regions[region_name] = {
+            "is_live_alarm_now": live_region_active.get(region_name, False),
+            "risk_level":        region_data.get("risk_level", "GREEN"),
+            "max_probability":   float(region_data.get("max_probability", 0.0)),
+            "current_temp":      current_temp,
+            "hourly_data":       patched_hourly,
+        }
+
+    gm        = pred_data.get("global_metrics", {})
+    wtoday_ok = _weather_today() is not None
+
+    global_metrics = {
+        "national_risk_index":     int(gm.get("national_risk_index", 0)),
+        "last_model_update":       gm.get(
+            "last_model_update",
+            pred_data.get("last_model_update", "unknown"),
+        ),
+        "prediction_generated_at": gm.get(
+            "prediction_generated_at",
+            pred_data.get("last_prediction_time", "unknown"),
+        ),
+        "base_datetime":  gm.get("base_datetime",  pred_data.get("base_datetime",  None)),
+        "forecast_start": gm.get("forecast_start", pred_data.get("forecast_start", None)),
+        "forecast_end":   gm.get("forecast_end",   pred_data.get("forecast_end",   None)),
+        "forecast_hours": int(gm.get("forecast_hours", 24)),
+        "total_regions_at_risk": int(gm.get("total_regions_at_risk", 0)),
+        "live_alarms_count":     live_alarms_count,
+        "weather_live":          wtoday_ok,
+    }
+
+    return {
+        "global_metrics": global_metrics,
+        "regions":        patched_regions,
+    }
 
 @router.post("/api/update-forecast")
 async def update_forecast(background_tasks: BackgroundTasks):
-    
     background_tasks.add_task(_run_predict)
     return {
         "status":    "accepted",
         "message":   "Prediction update started in background",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "check_at":  "/api/forecast (доступно через ~30s)",
+        "check_at":  "GET /api/forecast (available in ~30s)",
     }
 
-
-@router.get("/api/forecast")
-async def get_forecast(region: str = "all"):
-    
-    if not LATEST_JSON.exists():
-        _run_predict()
-
-    if not LATEST_JSON.exists():
+@router.post("/api/admin/retrain")
+async def trigger_retrain(background_tasks: BackgroundTasks):
+    if not RETRAIN_SCRIPT.exists():
         raise HTTPException(
-            status_code=503,
-            detail="Run POST /api/update-forecast first and wait ~30s"
+            status_code=404,
+            detail=f"Retrain script not found: {RETRAIN_SCRIPT}",
         )
-
-    if not LATEST_JSON.exists():
-        raise HTTPException(
-            status_code=503,
-            detail="Predictions not available yet. Run POST /api/update-forecast first."
-        )
-
-    with open(LATEST_JSON, encoding="utf-8") as f:
-        data = json.load(f)
-
-    response = {
-        "last_model_train_time": data.get("last_model_train_time", "unknown"),
-        "last_prediction_time":  data.get("last_prediction_time",  "unknown"),
-        "model_name":    data.get("model_name",    "LightGBM"),
-        "model_version": data.get("model_version", "v2"),
-        "team_id":       data.get("team_id",       "aegis"),
-        "threshold":     data.get("threshold",     0.5),
+    background_tasks.add_task(_run_retrain)
+    return {
+        "status":    "CI/CD Pipeline started",
+        "message":   "A/B validation and model retrain launched in background",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "script":    str(RETRAIN_SCRIPT),
     }
-
-    if region == "all":
-        response["regions_forecast"] = data.get("regions_forecast", {})
-    else:
-        regions = data.get("regions_forecast", {})
-        if region not in regions:
-            available = sorted(regions.keys())
-            raise HTTPException(
-                status_code=404,
-                detail=f"Region '{region}' not found. Available: {available}"
-            )
-        response["regions_forecast"] = {region: regions[region]}
-
-    return JSONResponse(content=response)
-
 
 @router.get("/api/health")
 async def health():
+    live   = _live_state()
+    wtoday = _weather_today()
     return {
-        "status":              "ok",
-        "timestamp":           datetime.now(timezone.utc).isoformat(),
-        "latest_json_exists":  LATEST_JSON.exists(),
+        "status":    "ok",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "latest_json_exists": LATEST_JSON.exists(),
+        "latest_json_age_s":  (
+            round(
+                datetime.now(timezone.utc).timestamp() - LATEST_JSON.stat().st_mtime,
+                1,
+            )
+            if LATEST_JSON.exists() else None
+        ),
+        "live_state_ok":            live is not None,
+        "live_alarms_count":        int(live.get("active_alarms_count", 0)) if live else None,
+        "weather_today_ok":         wtoday is not None,
+        "weather_today_generated_at": wtoday.get("generated_at") if wtoday else None,
     }

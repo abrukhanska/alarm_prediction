@@ -7,7 +7,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = PROJECT_ROOT / "data" / "raw" / "gur"
 PROCESSED = PROJECT_ROOT / "data" / "processed"
-OUTPUT_CSV = PROCESSED / "gur_features_clean.csv"
+OUTPUT_PARQUET = PROCESSED / "gur_features_clean.parquet"
 
 def load_raw_gur() -> pd.DataFrame:
     records = []
@@ -32,10 +32,13 @@ def load_raw_gur() -> pd.DataFrame:
     if df.empty:
         return df
     df["date"] = pd.to_datetime(df["date"])
-    df = df.sort_values("date").reset_index(drop = True)
+    df = df.sort_values("date").reset_index(drop=True)
     return df
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.set_index("date")
+    full_idx = pd.date_range(start=df.index.min(), end=df.index.max(), freq="D")
+    df = df.reindex(full_idx, fill_value=0).reset_index().rename(columns={"index": "date"})
     out = pd.DataFrame()
     out["date"] = df["date"]
     out["gur_massive_success_d1"] = (df["kw_success_total"] > 0).astype(np.int8)
@@ -46,7 +49,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     if max_val > 0:
         out["gur_logistics_14d"] = (logistics_14d / max_val).round(3).astype(np.float32)
     else:
-        out["gur_logistics_14d"] = np.float32(0.0)
+        out["gur_logistics_14d"] = pd.Series(0.0, index=df.index, dtype=np.float32)
     out["gur_energy_threat_d1"] = (df["kw_energy_total"] > 0).astype(np.int8)
     intercepts_7d = df["kw_intercepts_total"].rolling(7, min_periods=1).sum()
     out["gur_intercepts_7d"] = (intercepts_7d > 0).astype(np.int8)
@@ -66,14 +69,16 @@ def build() -> None:
         print("Data is not uploaded")
         return
     print(f"  GUR raw: {len(df_raw):,} days ({df_raw.date.min().date()} → {df_raw.date.max().date()})")
+
     df_features = build_features(df_raw)
-    df_features.to_csv(OUTPUT_CSV, index = False)
-    print(f"\n Saved: {OUTPUT_CSV}")
+
+    df_features.to_parquet(OUTPUT_PARQUET, index=False, compression="snappy")
+    print(f"\n Saved: {OUTPUT_PARQUET}")
     print(f"  Shape: {df_features.shape}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--build", action = "store_true")
+    parser.add_argument("--build", action="store_true")
     args = parser.parse_args()
     if args.build:
         build()

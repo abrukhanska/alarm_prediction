@@ -12,6 +12,8 @@ import logging
 import re
 import sys
 import time
+import os
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
@@ -564,17 +566,29 @@ def save_cache(cache_path: Path, cache: dict) -> None:
     except OSError:
         pass
 
+
 def _safe_write_json(
-    filepath: Path, data: dict, logger: logging.Logger
+        filepath: Path, data: dict, logger: logging.Logger
 ) -> bool:
+    temp_path = None
     try:
         filepath.parent.mkdir(parents=True, exist_ok=True)
         content = json.dumps(data, ensure_ascii=False, indent=2)
-        filepath.write_text(content, encoding="utf-8")
+        fd, temp_path = tempfile.mkstemp(dir=filepath.parent, text=True)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(temp_path, filepath)
+        temp_path = None
         return True
-    except OSError as e:
+    except Exception as e:
         logger.error(f"WRITE FAILED: {filepath} - {e}")
         return False
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 def output_exists(date_str: str) -> bool:
     return (SOURCES_DIR / f"{date_str}.json").exists()

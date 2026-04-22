@@ -1,19 +1,15 @@
 import argparse
 import sys
 from pathlib import Path
-
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-PROCESSED    = PROJECT_ROOT / "data" / "processed"
-PLOTS_DIR    = PROJECT_ROOT / "analysis" / "plots" / "features"
+PROCESSED = PROJECT_ROOT / "data" / "processed"
+PLOTS_DIR = PROJECT_ROOT / "analysis" / "plots" / "features"
 
-INPUT_CSV  = PROCESSED / "merged_dataset.csv"
-OUTPUT_CSV = PROCESSED / "features_dataset.csv"
+INPUT_PARQUET = PROCESSED / "merged_dataset.parquet"
+OUTPUT_PARQUET = PROCESSED / "features_dataset.parquet"
 REPORT_TXT = PROCESSED / "feature_engineering_report.txt"
 
 PAL = {
@@ -22,19 +18,19 @@ PAL = {
 }
 
 VISIBILITY_THR = 5.0
-WINDSPEED_THR  = 15.0
-FREEZING_THR   = 0.0
+WINDSPEED_THR = 15.0
+FREEZING_THR = 0.0
 
 N_REGIONS_EXPECTED = 23
 
 COLS_TO_DROP = {
-    'word_count':          'collinear with isw_report_length (r≈0.99)',
-    'sentence_count':      'ISW structural artifact, no predictive value',
-    'paragraph_count':     'ISW structural artifact, no predictive value',
+    'word_count': 'collinear with isw_report_length (r≈0.99)',
+    'sentence_count': 'ISW structural artifact, no predictive value',
+    'paragraph_count': 'ISW structural artifact, no predictive value',
     'avg_sentence_length': 'ISW structural artifact, no predictive value',
-    'sources_resolved':    'sub-component of isw_sources_count',
-    'sources_dead':        'sub-component of isw_sources_count',
-    'sources_blocked':     'sub-component of isw_sources_count',
+    'sources_resolved': 'sub-component of isw_sources_count',
+    'sources_dead': 'sub-component of isw_sources_count',
+    'sources_blocked': 'sub-component of isw_sources_count',
 }
 
 def load_merged() -> pd.DataFrame:
@@ -42,12 +38,11 @@ def load_merged() -> pd.DataFrame:
     print("STEP 1/5: Load merged dataset")
     print("=" * 75)
 
-    if not INPUT_CSV.exists():
-        print(f"   FATAL: {INPUT_CSV} not found")
+    if not INPUT_PARQUET.exists():
+        print(f"   FATAL: {INPUT_PARQUET} not found")
         print("   Run: python data_processing/merge_datasets.py --merge")
         sys.exit(1)
-
-    df = pd.read_csv(INPUT_CSV, low_memory=False)
+    df = pd.read_parquet(INPUT_PARQUET)
     df['datetime_hour'] = pd.to_datetime(df['datetime_hour'], utc=False, errors='coerce')
 
     bad_dt = df['datetime_hour'].isna().sum()
@@ -61,7 +56,7 @@ def load_merged() -> pd.DataFrame:
     print(f"     Loaded:   {df.shape}")
     print(f"     Regions: {df.region.nunique()}")
     print(f"     Range:   {df.datetime_hour.min().date()}  -> {df.datetime_hour.max().date()}")
-    print(f"     Alarm:   {df.alarm.mean()*100:.2f}%")
+    print(f"     Alarm:   {df.alarm.mean() * 100:.2f}%")
 
     drop_existing = [c for c in COLS_TO_DROP if c in df.columns]
     if drop_existing:
@@ -74,13 +69,13 @@ def load_merged() -> pd.DataFrame:
 
 def _check_time_gaps(df: pd.DataFrame) -> None:
     gaps = 0
-    for region, grp in df.groupby('region'):
+    for region, grp in df.groupby('region', observed=False):
         expected = pd.date_range(
             grp['datetime_hour'].min(),
             grp['datetime_hour'].max(),
             freq='h',
         )
-        actual  = set(grp['datetime_hour'])
+        actual = set(grp['datetime_hour'])
         missing = [h for h in expected if h not in actual]
         if missing:
             gaps += len(missing)
@@ -99,7 +94,7 @@ def add_lag_features(df: pd.DataFrame) -> pd.DataFrame:
 
     for lag in [1, 3, 6, 24]:
         df[f'alarm_lag_{lag}h'] = (
-            df.groupby('region')['alarm']
+            df.groupby('region', observed=False)['alarm']
             .shift(lag)
             .fillna(0)
             .astype(np.int8)
@@ -107,7 +102,7 @@ def add_lag_features(df: pd.DataFrame) -> pd.DataFrame:
     print("  [+] alarm_lag_1h / 3h / 6h / 24h")
 
     df['alarms_last_24h'] = (
-        df.groupby('region')['alarm']
+        df.groupby('region', observed=False)['alarm']
         .transform(lambda x: x.shift(1).rolling(window=24, min_periods=1).sum())
         .fillna(0)
         .astype(np.int16)
@@ -116,20 +111,20 @@ def add_lag_features(df: pd.DataFrame) -> pd.DataFrame:
 
     if 'n_regions_alarm' in df.columns:
         df['n_regions_lag_1h'] = (
-            df.groupby('region')['n_regions_alarm']
+            df.groupby('region', observed=False)['n_regions_alarm']
             .shift(1)
             .fillna(0)
             .astype(np.int8)
         )
         df['n_regions_lag_3h'] = (
-            df.groupby('region')['n_regions_alarm']
+            df.groupby('region', observed=False)['n_regions_alarm']
             .shift(3)
             .fillna(0)
             .astype(np.int8)
         )
         df['n_regions_momentum'] = (
-            df['n_regions_lag_1h'].astype(np.int16)
-            - df['n_regions_lag_3h'].astype(np.int16)
+                df['n_regions_lag_1h'].astype(np.int16)
+                - df['n_regions_lag_3h'].astype(np.int16)
         ).astype(np.int8)
         print("  [+] n_regions_lag_1h / 3h + momentum")
 
@@ -144,20 +139,20 @@ def add_lag_features(df: pd.DataFrame) -> pd.DataFrame:
         else:
             if 'n_regions_momentum' not in df.columns and 'n_regions_lag_3h' in df.columns:
                 df['n_regions_momentum'] = (
-                    df['n_regions_lag_1h'].astype(np.int16)
-                    - df['n_regions_lag_3h'].astype(np.int16)
+                        df['n_regions_lag_1h'].astype(np.int16)
+                        - df['n_regions_lag_3h'].astype(np.int16)
                 ).astype(np.int8)
             print("  [+] n_regions lags already present from merge step")
 
     if 'total_intensity' in df.columns:
         df['isw_intensity_growth_1d'] = (
-            df.groupby('region')['total_intensity']
+            df.groupby('region', observed=False)['total_intensity']
             .transform(lambda x: x - x.shift(24))
             .fillna(0)
             .astype(np.float32)
         )
         df['isw_intensity_growth_7d'] = (
-            df.groupby('region')['total_intensity']
+            df.groupby('region', observed=False)['total_intensity']
             .transform(lambda x: x - x.shift(168))
             .fillna(0)
             .astype(np.float32)
@@ -176,23 +171,23 @@ def add_temporal_features(df: pd.DataFrame, train_cutoff: pd.Timestamp) -> pd.Da
 
     train_mask = df['datetime_hour'] < train_cutoff
 
-    hour  = df['datetime_hour'].dt.hour
+    hour = df['datetime_hour'].dt.hour
     month = df['datetime_hour'].dt.month
-    dow   = df['datetime_hour'].dt.dayofweek
+    dow = df['datetime_hour'].dt.dayofweek
 
-    df['hour_sin']  = np.sin(2 * np.pi * hour  / 24).astype(np.float32)
-    df['hour_cos']  = np.cos(2 * np.pi * hour  / 24).astype(np.float32)
+    df['hour_sin'] = np.sin(2 * np.pi * hour / 24).astype(np.float32)
+    df['hour_cos'] = np.cos(2 * np.pi * hour / 24).astype(np.float32)
     df['month_sin'] = np.sin(2 * np.pi * month / 12).astype(np.float32)
     df['month_cos'] = np.cos(2 * np.pi * month / 12).astype(np.float32)
-    df['dow_sin']   = np.sin(2 * np.pi * dow   /  7).astype(np.float32)
-    df['dow_cos']   = np.cos(2 * np.pi * dow   /  7).astype(np.float32)
+    df['dow_sin'] = np.sin(2 * np.pi * dow / 7).astype(np.float32)
+    df['dow_cos'] = np.cos(2 * np.pi * dow / 7).astype(np.float32)
     print("  [+] Circular: hour / month / dayofweek sin-cos")
 
-    df['is_weekend']   = (dow >= 5).astype(np.int8)
-    df['is_morning']   = ((hour >= 6)  & (hour < 12)).astype(np.int8)
+    df['is_weekend'] = (dow >= 5).astype(np.int8)
+    df['is_morning'] = ((hour >= 6) & (hour < 12)).astype(np.int8)
     df['is_afternoon'] = ((hour >= 12) & (hour < 18)).astype(np.int8)
-    df['is_evening']   = ((hour >= 18) & (hour < 24)).astype(np.int8)
-    df['is_night']     = (hour < 6).astype(np.int8)
+    df['is_evening'] = ((hour >= 18) & (hour < 24)).astype(np.int8)
+    df['is_night'] = (hour < 6).astype(np.int8)
     print("  [+] Binary temporal: is_weekend, is_night/morning/afternoon/evening")
 
     if 'hour_visibility' in df.columns:
@@ -201,38 +196,38 @@ def add_temporal_features(df: pd.DataFrame, train_cutoff: pd.Timestamp) -> pd.Da
         print(f"  [i] visibility median (train-only): {vis_median_train:.2f} km")
         df['low_visibility'] = (df['hour_visibility'] < VISIBILITY_THR).astype(np.int8)
         print(f"  [+] low_visibility (<{VISIBILITY_THR} km): "
-              f"{df['low_visibility'].mean()*100:.1f}%")
+              f"{df['low_visibility'].mean() * 100:.1f}%")
 
     if 'hour_windspeed' in df.columns:
         df['strong_wind'] = (df['hour_windspeed'] > WINDSPEED_THR).astype(np.int8)
         print(f"  [+] strong_wind (>{WINDSPEED_THR} m/s): "
-              f"{df['strong_wind'].mean()*100:.1f}%")
+              f"{df['strong_wind'].mean() * 100:.1f}%")
 
     if 'hour_temp' in df.columns:
         df['freezing'] = (df['hour_temp'] < FREEZING_THR).astype(np.int8)
         print(f"  [+] freezing (<{FREEZING_THR}°C): "
-              f"{df['freezing'].mean()*100:.1f}%")
+              f"{df['freezing'].mean() * 100:.1f}%")
 
     bwi = pd.Series(0, index=df.index, dtype=np.int16)
-    if 'hour_precip'    in df.columns:
+    if 'hour_precip' in df.columns:
         bwi += (df['hour_precip'].fillna(0) > 0).astype(np.int16)
     if 'low_visibility' in df.columns:
         bwi += df['low_visibility'].astype(np.int16)
-    if 'strong_wind'    in df.columns:
+    if 'strong_wind' in df.columns:
         bwi += df['strong_wind'].astype(np.int16)
     df['bad_weather_index'] = bwi.clip(0, 3).astype(np.int8)
     print(f"  [+] bad_weather_index (0-3): mean={df['bad_weather_index'].mean():.2f}")
 
     if 'freezing' in df.columns and 'is_night' in df.columns:
         df['energy_stress'] = (
-            df['freezing'].astype(bool) & df['is_night'].astype(bool)
+                df['freezing'].astype(bool) & df['is_night'].astype(bool)
         ).astype(np.int8)
         print(f"  [+] energy_stress (freezing & night): "
-              f"{df['energy_stress'].mean()*100:.1f}%")
+              f"{df['energy_stress'].mean() * 100:.1f}%")
 
     if 'hour_temp' in df.columns:
         df['temp_72h_change'] = (
-            df.groupby('region')['hour_temp']
+            df.groupby('region', observed=False)['hour_temp']
             .transform(lambda x: x - x.shift(72))
             .fillna(0)
             .astype(np.float32)
@@ -241,7 +236,7 @@ def add_temporal_features(df: pd.DataFrame, train_cutoff: pd.Timestamp) -> pd.Da
 
     if 'hour_temp' in df.columns and 'hour_feelslike' in df.columns:
         df['temp_feels_diff'] = (
-            df['hour_temp'] - df['hour_feelslike']
+                df['hour_temp'] - df['hour_feelslike']
         ).astype(np.float32)
         print("  [+] temp_feels_diff (temp - feelslike)")
 
@@ -369,18 +364,18 @@ def validate_and_save(df: pd.DataFrame, train_cutoff: pd.Timestamp) -> None:
             issues.append(f"All-zero in '{col}' — check isw_nlp_pipeline.py")
 
     train = df[df['datetime_hour'] < train_cutoff]
-    test  = df[df['datetime_hour'] >= train_cutoff]
+    test = df[df['datetime_hour'] >= train_cutoff]
     if len(test) == 0:
         issues.append("TEST set is empty")
     if len(train) < 500:
         issues.append(f"TRAIN too small: {len(train)}")
 
-    tfidf_cols   = [c for c in df.columns if c.startswith('tfidf_')]
+    tfidf_cols = [c for c in df.columns if c.startswith('tfidf_')]
     synergy_cols = [c for c in df.columns if c.startswith('syn_')]
-    lag_all      = [c for c in df.columns if 'lag' in c or 'last_24h' in c
-                    or 'momentum' in c or 'growth' in c or 'roll' in c]
-    ext_cols     = [c for c in df.columns if c.startswith(('gur_', 'tg_'))]
-    zero_syn     = [s for s in synergy_cols if df[s].sum() == 0]
+    lag_all = [c for c in df.columns if 'lag' in c or 'last_24h' in c
+               or 'momentum' in c or 'growth' in c or 'roll' in c]
+    ext_cols = [c for c in df.columns if c.startswith(('gur_', 'tg_'))]
+    zero_syn = [s for s in synergy_cols if df[s].sum() == 0]
 
     print(f"  Shape:         {df.shape}")
     print(f"  TF-IDF:        {len(tfidf_cols)}")
@@ -407,14 +402,14 @@ def validate_and_save(df: pd.DataFrame, train_cutoff: pd.Timestamp) -> None:
         print(f"\n     ALL CHECKS PASSED")
 
     PROCESSED.mkdir(parents=True, exist_ok=True)
-    df.to_csv(OUTPUT_CSV, index=False)
-    print(f"\n     Saved: {OUTPUT_CSV}  {df.shape}")
+    df.to_parquet(OUTPUT_PARQUET, index=False, compression="snappy")
+    print(f"\n     Saved: {OUTPUT_PARQUET}  {df.shape}")
 
     model_cols = [c for c in df.columns if c != 'datetime_hour']
     with open(REPORT_TXT, 'w', encoding='utf-8') as f:
         f.write("FEATURE ENGINEERING REPORT\n" + "=" * 70 + "\n\n")
-        f.write(f"Input:        {INPUT_CSV}\n")
-        f.write(f"Output:       {OUTPUT_CSV}\n")
+        f.write(f"Input:        {INPUT_PARQUET}\n")
+        f.write(f"Output:       {OUTPUT_PARQUET}\n")
         f.write(f"Generated:    {pd.Timestamp.now()}\n\n")
         f.write(f"Shape:        {df.shape}\n")
         f.write(f"Train rows:   {len(train):,}\n")
@@ -438,7 +433,7 @@ def validate_and_save(df: pd.DataFrame, train_cutoff: pd.Timestamp) -> None:
         f.write("     FIX 5: energy_stress uses .astype(bool) for & operator\n")
         f.write(f"    FIX 6: OHE threshold unified at N_REGIONS_EXPECTED={N_REGIONS_EXPECTED}\n")
         f.write("     FIX 7: [CRITICAL] n_regions_alarm TARGET LEAKAGE removed:\n")
-        f.write("            - Dropped from features_dataset.csv after lag computation\n")
+        f.write("            - Dropped from features_dataset.parquet after lag computation\n")
         f.write("            - inter_alarm_spreading now uses n_regions_lag_1h\n")
         f.write("            - Model never sees the current-hour alarm sum\n\n")
         if issues:
@@ -461,7 +456,7 @@ def build() -> None:
     df = load_merged()
 
     n_regions_col = 'n_regions_alarm' if 'n_regions_alarm' in df.columns \
-                    else 'n_regions_lag_1h'
+        else 'n_regions_lag_1h'
     real_data_end = df[df[n_regions_col] > 0]['datetime_hour'].max()
     if pd.isna(real_data_end):
         real_data_end = df['datetime_hour'].max()
@@ -476,7 +471,7 @@ def build() -> None:
     print("\n" + "=" * 75)
     print("   FEATURE ENGINEERING COMPLETE")
     print("=" * 75)
-    print(f"  Output:       {OUTPUT_CSV}")
+    print(f"  Output:       {OUTPUT_PARQUET}")
     print(f"  Shape:        {df.shape}")
     print(f"  Train cutoff: {train_cutoff.date()}")
     print("\n     CRITICAL: use the same TRAIN_CUTOFF in train_models.py")

@@ -3,22 +3,24 @@ import csv
 import logging
 import os
 import sys
+import tempfile
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import requests
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(PROJECT_ROOT / ".env")
 
-WEATHER_KEY   = os.getenv("my_weather_key")
-RAW_NEW_DIR   = PROJECT_ROOT / "data" / "raw" / "weather" / "new"
-LOG_FILE      = PROJECT_ROOT / "logs" / "weather_collector.log"
+WEATHER_KEY = os.getenv("my_weather_key")
+RAW_NEW_DIR = PROJECT_ROOT / "data" / "raw" / "weather" / "new"
+LOG_FILE = PROJECT_ROOT / "logs" / "weather_collector.log"
 
-KYIV_TZ       = ZoneInfo("Europe/Kyiv")
+KYIV_TZ = ZoneInfo("Europe/Kyiv")
 SLEEP_BETWEEN = 2
 
 BASE_URL = (
@@ -57,7 +59,7 @@ REGIONS: dict[str, tuple[str, str]] = {
 CSV_COLUMNS = [
     "city", "date", "datetime_hour",
     "day_tempmax", "day_tempmin", "day_temp", "day_humidity",
-    "day_precip",  "day_windspeed", "day_cloudcover", "day_visibility",
+    "day_precip", "day_windspeed", "day_cloudcover", "day_visibility",
     "day_pressure",
     "hour_temp", "hour_feelslike", "hour_dew", "hour_humidity",
     "hour_windspeed", "hour_winddir", "hour_windgust",
@@ -85,18 +87,11 @@ def setup_logging() -> logging.Logger:
 def _output_path(target_date: date) -> Path:
     return RAW_NEW_DIR / f"{target_date}_weather_raw.csv"
 
-def _ensure_csv_header(path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if not path.exists():
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
-            writer.writeheader()
-
 def fetch_region_weather(
-    location: str, target_date: date, logger: logging.Logger
+        location: str, target_date: date, logger: logging.Logger
 ) -> dict | None:
     url = BASE_URL.format(
-        location=requests.utils.quote(location, safe=""),
+        location=requests.utils.quote(location, safe=","),
         date=target_date.isoformat(),
         key=WEATHER_KEY,
     )
@@ -114,11 +109,11 @@ def fetch_region_weather(
                 return None
             else:
                 logger.warning(
-                    f"{location} returned {resp.status_code}, attempt {attempt+1}/3"
+                    f"{location} returned {resp.status_code}, attempt {attempt + 1}/3"
                 )
                 time.sleep(10)
         except requests.exceptions.Timeout:
-            logger.warning(f"Timeout for {location}, attempt {attempt+1}/3")
+            logger.warning(f"Timeout for {location}, attempt {attempt + 1}/3")
             time.sleep(10)
         except Exception as e:
             logger.warning(f"Error for {location}: {e}")
@@ -127,7 +122,7 @@ def fetch_region_weather(
     return None
 
 def parse_hourly_rows(
-    raw: dict, city: str, target_date: date
+        raw: dict, city: str, target_date: date
 ) -> list[dict]:
     rows = []
     days = raw.get("days", [])
@@ -137,68 +132,88 @@ def parse_hourly_rows(
     day = days[0]
 
     day_fields = {
-        "day_tempmax":    day.get("tempmax"),
-        "day_tempmin":    day.get("tempmin"),
-        "day_temp":       day.get("temp"),
-        "day_humidity":   day.get("humidity"),
-        "day_precip":     day.get("precip"),
-        "day_windspeed":  day.get("windspeed"),
+        "day_tempmax": day.get("tempmax"),
+        "day_tempmin": day.get("tempmin"),
+        "day_temp": day.get("temp"),
+        "day_humidity": day.get("humidity"),
+        "day_precip": day.get("precip"),
+        "day_windspeed": day.get("windspeed"),
         "day_cloudcover": day.get("cloudcover"),
         "day_visibility": day.get("visibility"),
-        "day_pressure":   day.get("pressure"),
+        "day_pressure": day.get("pressure"),
     }
-
     for h in day.get("hours", []):
         hour_time = h.get("datetime", "")
         if not hour_time:
             continue
         datetime_hour = f"{target_date} {hour_time[:5]}:00"
-
         row = {
-            "city":          city,
-            "date":          str(target_date),
+            "city": city,
+            "date": str(target_date),
             "datetime_hour": datetime_hour,
             **day_fields,
-            "hour_temp":        h.get("temp"),
-            "hour_feelslike":   h.get("feelslike"),
-            "hour_dew":         h.get("dew"),
-            "hour_humidity":    h.get("humidity"),
-            "hour_windspeed":   h.get("windspeed"),
-            "hour_winddir":     h.get("winddir"),
-            "hour_windgust":    h.get("windgust"),
-            "hour_visibility":  h.get("visibility"),
-            "hour_cloudcover":  h.get("cloudcover"),
-            "hour_pressure":    h.get("pressure"),
-            "hour_precip":      h.get("precip"),
-            "hour_precipprob":  h.get("precipprob"),
-            "hour_snow":        h.get("snow"),
-            "hour_snowdepth":   h.get("snowdepth"),
-            "hour_conditions":  h.get("conditions"),
+            "hour_temp": h.get("temp"),
+            "hour_feelslike": h.get("feelslike"),
+            "hour_dew": h.get("dew"),
+            "hour_humidity": h.get("humidity"),
+            "hour_windspeed": h.get("windspeed"),
+            "hour_winddir": h.get("winddir"),
+            "hour_windgust": h.get("windgust"),
+            "hour_visibility": h.get("visibility"),
+            "hour_cloudcover": h.get("cloudcover"),
+            "hour_pressure": h.get("pressure"),
+            "hour_precip": h.get("precip"),
+            "hour_precipprob": h.get("precipprob"),
+            "hour_snow": h.get("snow"),
+            "hour_snowdepth": h.get("snowdepth"),
+            "hour_conditions": h.get("conditions"),
         }
         rows.append(row)
     return rows
 
-def write_rows(rows: list[dict], path: Path) -> None:
-    with open(path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
-        writer.writerows(rows)
+def write_rows_atomic(rows: list[dict], path: Path, logger: logging.Logger) -> None:
+    if not rows:
+        return
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = None
+    try:
+        fd, temp_path = tempfile.mkstemp(dir=path.parent, suffix=".csv", text=True)
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+            writer.writeheader()
+            writer.writerows(rows)
+
+        os.replace(temp_path, path)
+        temp_path = None
+    except Exception as e:
+        logger.error(f"Failed to write CSV {path.name}: {e}")
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 def collect_day(target_date: date, logger: logging.Logger) -> dict:
     out_path = _output_path(target_date)
 
     if out_path.exists():
-        import pandas as pd
-        existing = pd.read_csv(out_path)
-        if len(existing) >= len(REGIONS) * 24:
-            logger.info(f"{target_date} already collected ({len(existing)} rows) - skip")
-            return {"regions": len(REGIONS), "hours": len(existing), "errors": 0, "skipped": True}
+        try:
+            existing = pd.read_csv(out_path)
+            if len(existing) >= len(REGIONS) * 24:
+                logger.info(f"{target_date} already collected ({len(existing)} rows) - skip")
+                return {"regions": len(REGIONS), "hours": len(existing), "errors": 0, "skipped": True}
+        except Exception as e:
+            logger.warning(f"Could not read existing file {out_path.name}: {e}. Recollecting.")
 
-    _ensure_csv_header(out_path)
     stats = {"regions": 0, "hours": 0, "errors": 0, "skipped": False}
     total = len(REGIONS)
 
     logger.info(f"Collecting weather for {target_date}  ({total} regions)")
     logger.info(f"Output: {out_path.name}")
+
+    all_day_rows = []
 
     for i, (region, (location, city)) in enumerate(REGIONS.items(), 1):
         logger.info(f"  [{i}/{total}] {region}")
@@ -209,8 +224,8 @@ def collect_day(target_date: date, logger: logging.Logger) -> dict:
         else:
             rows = parse_hourly_rows(raw, city, target_date)
             if rows:
-                write_rows(rows, out_path)
-                stats["hours"]   += len(rows)
+                all_day_rows.extend(rows)
+                stats["hours"] += len(rows)
                 stats["regions"] += 1
                 logger.info(f"OK: {len(rows)} hours")
             else:
@@ -219,6 +234,9 @@ def collect_day(target_date: date, logger: logging.Logger) -> dict:
 
         if i < total:
             time.sleep(SLEEP_BETWEEN)
+
+    if all_day_rows:
+        write_rows_atomic(all_day_rows, out_path, logger)
 
     return stats
 
@@ -259,7 +277,7 @@ def main() -> None:
     logger.info(f"Dates: {[str(d) for d in target_dates]}")
     logger.info(
         f"Max API cost: {len(REGIONS)} regions × 24h × {len(target_dates)} day(s)"
-        f" = {len(REGIONS) * 24 * len(target_dates)} records"
+        f" = {len(REGIONS) * 24 * len(target_dates)} records "
         f"(free tier: 1000/day)"
     )
     logger.info("-" * 60)

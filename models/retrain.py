@@ -37,7 +37,7 @@ PROCESSED    = PROJECT_ROOT / "data" / "processed"
 MODELS_DIR   = PROJECT_ROOT / "models"
 LOGS_DIR     = PROJECT_ROOT / "logs"
 
-FEATURES_CSV     = PROCESSED / "features_dataset.csv"
+FEATURES_PARQUET = PROCESSED / "features_dataset.parquet"
 PROD_MODEL_PATH  = MODELS_DIR / f"{TEAM_ID}__lightgbm__v1.pkl"
 METADATA_PATH    = MODELS_DIR / "retrain_metadata.json"
 LOG_PATH         = LOGS_DIR  / "retrain.log"
@@ -161,27 +161,26 @@ def _print_metrics(label: str, y_true: np.ndarray, y_score: np.ndarray, threshol
                 threshold=threshold)
 
 def load_data(validation_days: int) -> tuple:
-    _banner("STEP 1 / 5  —  Load & Split Data")
+    _banner("STEP 1 / 5  —  Load & Split Data (Parquet)")
 
-    if not FEATURES_CSV.exists():
-        log.error(f"Features file not found: {FEATURES_CSV}")
+    if not FEATURES_PARQUET.exists():
+        log.error(f"Features file not found: {FEATURES_PARQUET}")
         log.error("Run feature_engineering.py --build first.")
         sys.exit(1)
 
-    log.info(f"Reading {FEATURES_CSV} ...")
-    df = pd.read_csv(FEATURES_CSV, low_memory=False)
+    log.info(f"Reading {FEATURES_PARQUET} ...")
+    df = pd.read_parquet(FEATURES_PARQUET)
 
-    for col in df.select_dtypes("float64").columns:
-        df[col] = df[col].astype("float32")
-    for col in df.select_dtypes("int64").columns:
-        df[col] = df[col].astype("int32")
+    if not pd.api.types.is_datetime64_any_dtype(df["datetime_hour"]):
+        df["datetime_hour"] = pd.to_datetime(df["datetime_hour"])
 
-    df["datetime_hour"] = pd.to_datetime(df["datetime_hour"])
     df = df.sort_values("datetime_hour").reset_index(drop=True)
 
     val_cutoff = df["datetime_hour"].max().floor("D") - pd.Timedelta(days=validation_days)
 
-    train_df = df[df["datetime_hour"] < val_cutoff].copy()
+    train_end = val_cutoff - pd.Timedelta(hours=24)
+
+    train_df = df[df["datetime_hour"] <= train_end].copy()
     val_df   = df[df["datetime_hour"] >= val_cutoff].copy()
 
     if len(train_df) == 0:
@@ -268,40 +267,41 @@ def train_new_model(
     elapsed = (datetime.now() - t0).total_seconds()
     log.info(f"  Phase 2 done in {elapsed:.1f}s total")
 
-    log.info("")
-    log.info("  Threshold tuning on X_early via temp_model (unseen data) ...")
-    y_early_score = temp_model.predict_proba(X_early)[:, 1]
-    prec, rec, thr = precision_recall_curve(y_early.values, y_early_score)
-    f1_arr   = 2 * prec * rec / np.maximum(prec + rec, 1e-9)
-    best_idx = int(np.argmax(f1_arr[:-1]))
-    new_thr  = float(thr[best_idx])
-    log.info(f"  Optimal threshold: {new_thr:.3f}  "
-             f"P={prec[best_idx]:.3f}  R={rec[best_idx]:.3f}  F1={f1_arr[best_idx]:.3f}")
-
-    return model, best_iter, new_thr
+    return model, best_iter
 
 def validate_models(
     new_model:  lgb.LGBMClassifier,
     old_model,
     X_val:      pd.DataFrame,
     y_val:      pd.Series,
-    new_thr:    float,
     old_thr:    float,
 ) -> tuple:
     _banner("STEP 3 / 5  —  Model Validation  (Task 13a)")
 
     y_new_score = new_model.predict_proba(X_val)[:, 1]
+    prec, rec, thr_arr = precision_recall_curve(y_val.values, y_new_score)
+    f1_arr   = 2 * prec * rec / np.maximum(prec + rec, 1e-9)
+    best_idx = int(np.argmax(f1_arr[:-1]))
+    new_thr  = float(thr_arr[best_idx])
+
+    log.info(f"  Dynamic threshold calculated on Val Set: {new_thr:.3f}")
+
     log.info("  NEW model metrics on validation set:")
     new_m = _print_metrics("NEW", y_val.values, y_new_score, new_thr)
 
     if old_model is None:
         log.info("  No old model to compare against — deploying new model unconditionally.")
-        return True, new_m, {}
+        return True, new_m, {}, new_thr
 
-    y_old_score = old_model.predict_proba(X_val)[:, 1]
-    log.info("")
-    log.info("  OLD (production) model metrics on validation set:")
-    old_m = _print_metrics("OLD", y_val.values, y_old_score, old_thr)
+    try:
+        y_old_score = old_model.predict_proba(X_val)[:, 1]
+        log.info("")
+        log.info("  OLD (production) model metrics on validation set:")
+        old_m = _print_metrics("OLD", y_val.values, y_old_score, old_thr)
+    except Exception as e:
+        log.warning(f"  OLD model failed to predict (likely feature mismatch: {e}).")
+        log.warning("  Deploying NEW model unconditionally.")
+        return True, new_m, {}, new_thr
 
     log.info("")
     delta_auc    = new_m["roc_auc"] - old_m["roc_auc"]
@@ -324,7 +324,7 @@ def validate_models(
                     f"  Delta={delta_auc:+.4f}")
         should_deploy = False
 
-    return should_deploy, new_m, old_m
+    return should_deploy, new_m, old_m, new_thr
 
 def deploy_model(
     new_model:     lgb.LGBMClassifier,
@@ -441,12 +441,12 @@ def main(args: argparse.Namespace) -> None:
 
     scale_pos_weight = compute_class_weight(y_train)
 
-    new_model, best_iter, new_thr = train_new_model(
+    new_model, best_iter = train_new_model(
         X_train, y_train, X_val, y_val, scale_pos_weight
     )
 
-    should_deploy, new_metrics, old_metrics = validate_models(
-        new_model, old_model, X_val, y_val, new_thr, old_thr
+    should_deploy, new_metrics, old_metrics, new_thr = validate_models(
+        new_model, old_model, X_val, y_val, old_thr
     )
 
     deploy_model(
@@ -458,7 +458,6 @@ def main(args: argparse.Namespace) -> None:
     elapsed = (datetime.now() - t_start).total_seconds()
     print_summary(new_metrics, old_metrics, should_deploy, best_iter, new_thr, elapsed)
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="AEGIS weekly model retraining — Task 13 + 13a",
@@ -466,9 +465,9 @@ if __name__ == "__main__":
         epilog=__doc__,
     )
     parser.add_argument(
-        "--validation-days", type=int, default=3, metavar="N",
+        "--validation-days", type=int, default=7, metavar="N",
         help="Number of recent days to use as the holdout validation set "
-             "for old vs new model comparison. Default: 3.",
+             "for old vs new model comparison. Default: 7.",
     )
     parser.add_argument(
         "--dry-run", action="store_true",

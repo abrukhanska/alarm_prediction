@@ -44,7 +44,7 @@ SPOILER_PATTERNS = re.compile(
 )
 
 RE_TU95 = re.compile(
-    r"Ту-?95|Tu-?95|ту-?95|Туполев.{0,10}95|TU-?95|Медвєд[ьь]|Медведь",
+    r"Ту-?95|Tu-?95|ту-?95|Туполев.{0,10}95|TU-?95|Медв[еє]д[ья]?|95-?й",
     re.IGNORECASE,
 )
 RE_TU160 = re.compile(
@@ -58,7 +58,7 @@ RE_TU22 = re.compile(
 )
 
 RE_MIG31 = re.compile(
-    r"МіГ-?31|миг-?31|MiG-?31|МИГ-?31|міг-?31к|miG-31K|петух[а-я]*-?31",
+    r"МіГ-?31|миг-?31|MiG-?31|МИГ-?31|міг-?31к|miG-31K|петух[а-я]*(?:\s*-?31)?",
     re.IGNORECASE,
 )
 
@@ -77,6 +77,7 @@ RE_VZLOT = re.compile(
     r"|зліт.{0,30}(?:Ту|МіГ|Су|борт|петух)"
     r"|(?:Ту|МіГ|Су|борт|петух).{0,30}зліт"
     r"|зафіксовано\s+(?:виліт|зліт)"
+    r"|курс на пускові"
     r"|airborne|takeoff|🛫",
     re.IGNORECASE,
 )
@@ -142,7 +143,8 @@ RE_PUSK = re.compile(
     r"пуск|пуски|Пуск|Пуски|пущен|пущені|запуск|запуски"
     r"|випустил|выпустил|выпущен|выходы|летят"
     r"|launch(?:ed)?|salvo"
-    r"|🚀.{0,20}(?:пуск|виявл|зафікс)",
+    r"|🚀.{0,20}(?:пуск|виявл|зафікс)"
+    r"|вийшли на пускові",
     re.IGNORECASE,
 )
 
@@ -344,7 +346,7 @@ RE_FALSE_TARGET = re.compile(
 )
 
 RE_DRONE_COUNT = re.compile(
-    r"(\d{1,2})\s*(?:мопед\w*|БпЛА|бпла|шахед\w*|дрон\w*|беспилотн\w*|герань\w*)",
+    r"(\d{1,2})\s*(?:мопед\w*|БпЛА|бпла|шахед\w*|дрон\w*|беспи��отн\w*|герань\w*)",
     re.IGNORECASE,
 )
 
@@ -364,40 +366,47 @@ def setup_logging(debug: bool = False) -> logging.Logger:
     logger.addHandler(ch)
     return logger
 
-def _iter_jsonl(path: Path):
-    with path.open(encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                yield json.loads(line)
-            except json.JSONDecodeError:
-                continue
+def _iter_jsonl_chunks(files: list[Path], chunk_size: int = 50000):
+    chunk = []
+    for path in files:
+        with path.open(encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    chunk.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+                if len(chunk) >= chunk_size:
+                    yield pd.DataFrame(chunk)
+                    chunk = []
+    if chunk:
+        yield pd.DataFrame(chunk)
 
 def load_all_jsonl(since: datetime | None, logger: logging.Logger) -> pd.DataFrame:
     files = sorted(RAW_DIR.rglob("*.jsonl"))
     files = [f for f in files if not f.name.startswith(".")]
     logger.info(f"Files found: {len(files)}")
 
-    records = []
-    for f in files:
-        for record in _iter_jsonl(f):
-            records.append(record)
+    dfs = []
+    for chunk_df in _iter_jsonl_chunks(files, chunk_size=50000):
+        if "channel" in chunk_df.columns:
+            chunk_df["channel"] = chunk_df["channel"].replace("suspilnenews", "suspilne_news")
+        if "datetime" in chunk_df.columns:
+            chunk_df["datetime"] = pd.to_datetime(chunk_df["datetime"], format="%Y-%m-%d %H:%M:%S", errors="coerce")
+            chunk_df = chunk_df.dropna(subset=["datetime"])
+            if since is not None:
+                chunk_df = chunk_df[chunk_df["datetime"] >= since]
+        if not chunk_df.empty:
+            dfs.append(chunk_df)
 
-    logger.info(f"Records loaded (before dedup): {len(records):,}")
+    if not dfs:
+        logger.info("No records loaded.")
+        return pd.DataFrame()
 
-    df = pd.DataFrame(records)
-    df["channel"] = df["channel"].replace("suspilnenews", "suspilne_news")
-
-    df["datetime"] = pd.to_datetime(df["datetime"], format="%Y-%m-%d %H:%M:%S",
-                                    errors="coerce")
-    df = df.dropna(subset=["datetime"])
-
-    if since is not None:
-        df = df[df["datetime"] >= since]
-        logger.info(f"After --since={since.date()} filter: {len(df):,} records")
-
+    df = pd.concat(dfs, ignore_index=True)
+    logger.info(f"Records loaded (before dedup): {len(df):,}")
     return df
 
 def deduplicate_and_clean(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
@@ -420,105 +429,100 @@ def deduplicate_and_clean(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFr
     logger.info(f"Clean records ready for processing: {len(df):,}")
     return df
 
-def _match(pattern: re.Pattern, text: str) -> int:
-    return 1 if pattern.search(text) else 0
-
 def _count_emojis(text: str) -> int:
     return sum(
         1 for c in text
         if (0x1F000 <= ord(c) <= 0x1FFFF)
         or (0x2600 <= ord(c) <= 0x27FF)
-        or c in "→←↑↓▪►◄✈🚀🛵🔴🟢⚠❗⚡💥🔥🛫🛬"
+        or c in "→←↑↓▪►◄🚀🛵🔴🟢⚠❗⚡💥🔥🛫🛬"
     )
-
-def _count_rockets_mentioned(text: str) -> int:
-    matches = RE_ROCKET_COUNT.findall(text)
-    if not matches:
-        return 0
-    return max(int(m) for m in matches)
-
-def _count_drones_mentioned(text: str) -> int:
-    matches = RE_DRONE_COUNT.findall(text)
-    if not matches:
-        return 0
-    return max(int(m) for m in matches)
 
 def _clean_for_nlp(text: str) -> str:
     return SPOILER_PATTERNS.sub(" ", text)
 
 def extract_features_per_message(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
-    logger.info("Extracting per-message features...")
+    logger.info("Extracting per-message features using vectorized regex...")
 
     df["text_clean"] = df["text"].apply(_clean_for_nlp)
 
-    df["f_tu95"]       = df["text_clean"].apply(lambda t: _match(RE_TU95, t))
-    df["f_tu160"]      = df["text_clean"].apply(lambda t: _match(RE_TU160, t))
-    df["f_tu22"]       = df["text_clean"].apply(lambda t: _match(RE_TU22, t))
-    df["f_mig31"]      = df["text_clean"].apply(lambda t: _match(RE_MIG31, t))
-    df["f_su34"]       = df["text_clean"].apply(lambda t: _match(RE_SU34, t))
-    df["f_vzlot"]      = df["text_clean"].apply(lambda t: _match(RE_VZLOT, t))
-    df["f_airbase"]    = df["text_clean"].apply(lambda t: _match(RE_AIRBASE, t))
+    def _vec_match(pattern: re.Pattern) -> pd.Series:
+        return df["text_clean"].str.contains(pattern).fillna(False).astype(np.int8)
+
+    df["f_tu95"]       = _vec_match(RE_TU95)
+    df["f_tu160"]      = _vec_match(RE_TU160)
+    df["f_tu22"]       = _vec_match(RE_TU22)
+    df["f_mig31"]      = _vec_match(RE_MIG31)
+    df["f_su34"]       = _vec_match(RE_SU34)
+    df["f_vzlot"]      = _vec_match(RE_VZLOT)
+    df["f_airbase"]    = _vec_match(RE_AIRBASE)
 
     df["f_carrier_airborne"] = (
         (df["f_tu95"] | df["f_tu160"] | df["f_mig31"] | df["f_tu22"]) & df["f_vzlot"]
-    ).astype(int)
+    ).astype(np.int8)
 
-    df["f_x101"]       = df["text_clean"].apply(lambda t: _match(RE_X101, t))
-    df["f_x55"]        = df["text_clean"].apply(lambda t: _match(RE_X55, t))
-    df["f_x22"]        = df["text_clean"].apply(lambda t: _match(RE_X22, t))
-    df["f_x59"]        = df["text_clean"].apply(lambda t: _match(RE_X59, t))
-    df["f_kalibr"]     = df["text_clean"].apply(lambda t: _match(RE_KALIBR, t))
-    df["f_iskander"]   = df["text_clean"].apply(lambda t: _match(RE_ISKANDER, t))
-    df["f_kinzhal"]    = df["text_clean"].apply(lambda t: _match(RE_KINZHAL, t))
-    df["f_oniks"]      = df["text_clean"].apply(lambda t: _match(RE_ONIKS, t))
-    df["f_ballistic"]  = df["text_clean"].apply(lambda t: _match(RE_BALLISTIC, t))
-    df["f_kab"]        = df["text_clean"].apply(lambda t: _match(RE_KAB, t))
-    df["f_rszo"]       = df["text_clean"].apply(lambda t: _match(RE_RSZO, t))
+    df["f_x101"]       = _vec_match(RE_X101)
+    df["f_x55"]        = _vec_match(RE_X55)
+    df["f_x22"]        = _vec_match(RE_X22)
+    df["f_x59"]        = _vec_match(RE_X59)
+    df["f_kalibr"]     = _vec_match(RE_KALIBR)
+    df["f_iskander"]   = _vec_match(RE_ISKANDER)
+    df["f_kinzhal"]    = _vec_match(RE_KINZHAL)
+    df["f_oniks"]      = _vec_match(RE_ONIKS)
+    df["f_ballistic"]  = _vec_match(RE_BALLISTIC)
+    df["f_kab"]        = _vec_match(RE_KAB)
+    df["f_rszo"]       = _vec_match(RE_RSZO)
 
-    df["f_any_cruise"] = df[["f_x101", "f_x55", "f_x22", "f_kalibr", "f_x59"]].max(axis=1)
+    df["f_any_cruise"] = df[["f_x101", "f_x55", "f_x22", "f_kalibr", "f_x59"]].max(axis=1).astype(np.int8)
 
-    df["f_shahed"]     = df["text_clean"].apply(lambda t: _match(RE_SHAHED, t))
-    df["f_lancet"]     = df["text_clean"].apply(lambda t: _match(RE_LANCET, t))
+    df["f_shahed"]     = _vec_match(RE_SHAHED)
+    df["f_lancet"]     = _vec_match(RE_LANCET)
 
-    df["f_pusk"]         = df["text_clean"].apply(lambda t: _match(RE_PUSK, t))
-    df["f_rocket_count"] = df["text"].apply(_count_rockets_mentioned)
-    df["f_drone_count"]  = df["text"].apply(_count_drones_mentioned)
+    df["f_pusk"]       = _vec_match(RE_PUSK)
 
-    df["f_takt_avia"]    = df["text_clean"].apply(lambda t: _match(RE_TAKT_AVIA, t))
-    df["f_bude_huchno"]  = df["text_clean"].apply(lambda t: _match(RE_BUDE_HUCHNO, t))
-    df["f_khvylya"]      = df["text_clean"].apply(lambda t: _match(RE_KHVYLYA, t))
-    df["f_povtorni"]     = df["text_clean"].apply(lambda t: _match(RE_POVTORNI, t))
-    df["f_staging"]      = df["text_clean"].apply(lambda t: _match(RE_STAGING, t))
-    df["f_prestrike"]    = df["text_clean"].apply(lambda t: _match(RE_PRESTRIKE, t))
-    df["f_expl_confirm"] = df["text_clean"].apply(lambda t: _match(RE_EXPL_CONFIRM, t))
+    def get_max_match(series: pd.Series, pattern: re.Pattern) -> pd.Series:
+        extracted = series.str.extractall(pattern)
+        if extracted.empty:
+            return pd.Series(0, index=series.index, dtype=np.int16)
+        return extracted[0].astype(float).groupby(level=0).max().fillna(0).astype(np.int16)
 
-    df["f_recon"]        = df["text_clean"].apply(lambda t: _match(RE_RECON, t))
-    df["f_false_target"] = df["text_clean"].apply(lambda t: _match(RE_FALSE_TARGET, t))
-    df["f_acoustic"]     = df["text_clean"].apply(lambda t: _match(RE_ACOUSTIC, t))
+    df["f_rocket_count"] = get_max_match(df["text"], RE_ROCKET_COUNT).reindex(df.index, fill_value=0).astype(np.int16)
+    df["f_drone_count"]  = get_max_match(df["text"], RE_DRONE_COUNT).reindex(df.index, fill_value=0).astype(np.int16)
 
-    df["f_vec_south"]   = df["text_clean"].apply(lambda t: _match(RE_SOUTH, t))
-    df["f_vec_east"]    = df["text_clean"].apply(lambda t: _match(RE_EAST, t))
-    df["f_chorne_more"] = df["text_clean"].apply(lambda t: _match(RE_CHORNE_MORE, t))
-    df["f_submarine"]   = df["text_clean"].apply(lambda t: _match(RE_SUBMARINE, t))
+    df["f_takt_avia"]    = _vec_match(RE_TAKT_AVIA)
+    df["f_bude_huchno"]  = _vec_match(RE_BUDE_HUCHNO)
+    df["f_khvylya"]      = _vec_match(RE_KHVYLYA)
+    df["f_povtorni"]     = _vec_match(RE_POVTORNI)
+    df["f_staging"]      = _vec_match(RE_STAGING)
+    df["f_prestrike"]    = _vec_match(RE_PRESTRIKE)
+    df["f_expl_confirm"] = _vec_match(RE_EXPL_CONFIRM)
 
-    df["f_dir_kyiv"]    = df["text_clean"].apply(lambda t: _match(RE_KYIV_DIR, t))
-    df["f_dir_kharkiv"] = df["text_clean"].apply(lambda t: _match(RE_KHARKIV_DIR, t))
-    df["f_dir_dnipro"]  = df["text_clean"].apply(lambda t: _match(RE_DNIPRO_DIR, t))
-    df["f_dir_odesa"]   = df["text_clean"].apply(lambda t: _match(RE_ODESA_DIR, t))
+    df["f_recon"]        = _vec_match(RE_RECON)
+    df["f_false_target"] = _vec_match(RE_FALSE_TARGET)
+    df["f_acoustic"]     = _vec_match(RE_ACOUSTIC)
+
+    df["f_vec_south"]   = _vec_match(RE_SOUTH)
+    df["f_vec_east"]    = _vec_match(RE_EAST)
+    df["f_chorne_more"] = _vec_match(RE_CHORNE_MORE)
+    df["f_submarine"]   = _vec_match(RE_SUBMARINE)
+
+    df["f_dir_kyiv"]    = _vec_match(RE_KYIV_DIR)
+    df["f_dir_kharkiv"] = _vec_match(RE_KHARKIV_DIR)
+    df["f_dir_dnipro"]  = _vec_match(RE_DNIPRO_DIR)
+    df["f_dir_odesa"]   = _vec_match(RE_ODESA_DIR)
     df["f_cities_count"] = (
         df["f_dir_kyiv"] + df["f_dir_kharkiv"]
         + df["f_dir_dnipro"] + df["f_dir_odesa"]
-    )
+    ).astype(np.int8)
 
-    df["f_ppo"]        = df["text_clean"].apply(lambda t: _match(RE_PPO, t))
-    df["f_bavovna"]    = df["text_clean"].apply(lambda t: _match(RE_BAVOVNA, t))
-    df["f_masovana"]   = df["text_clean"].apply(lambda t: _match(RE_MASOVANA, t))
-    df["f_comms"]      = df["text_clean"].apply(lambda t: _match(RE_COMMS, t))
-    df["f_tension"]    = df["text_clean"].apply(lambda t: _match(RE_TENSION_HIGH, t))
+    df["f_ppo"]        = _vec_match(RE_PPO)
+    df["f_bavovna"]    = _vec_match(RE_BAVOVNA)
+    df["f_masovana"]   = _vec_match(RE_MASOVANA)
+    df["f_comms"]      = _vec_match(RE_COMMS)
+    df["f_tension"]    = _vec_match(RE_TENSION_HIGH)
 
-    df["f_text_len"]      = df["text"].str.len()
-    df["f_emoji_cnt"]     = df["text"].apply(_count_emojis)
-    df["f_emoji_density"] = (df["f_emoji_cnt"] / df["f_text_len"].clip(lower=1)).round(4)
+    df["f_text_len"]      = df["text"].str.len().astype(np.int32)
+    df["f_emoji_cnt"]     = df["text"].apply(_count_emojis).astype(np.int16)
+    df["f_emoji_density"] = (df["f_emoji_cnt"] / df["f_text_len"].clip(lower=1)).astype(np.float32)
 
     logger.info("Per-message features extracted.")
     return df
@@ -576,19 +580,19 @@ def aggregate_hourly(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
     agg_dict.update({col: "mean" for col in MEAN_COLS})
     agg_dict["msg_id"] = "count"
 
-    hourly = df.groupby("hour").agg(agg_dict).rename(
+    hourly = df.groupby("hour", observed=False).agg(agg_dict).rename(
         columns={"msg_id": "total_msg_count"}
     )
 
-    channel_counts = df.groupby(["hour", "channel"]).size().unstack(fill_value=0)
+    channel_counts = df.groupby(["hour", "channel"], observed=False).size().unstack(fill_value=0)
     channel_counts.columns = [f"msgs_{ch}" for ch in channel_counts.columns]
     hourly = hourly.join(channel_counts, how="left")
 
-    hourly["active_channels"] = df.groupby("hour")["channel"].nunique()
+    hourly["active_channels"] = df.groupby("hour", observed=False)["channel"].nunique()
 
     official = df[df["channel"].isin(["GeneralStaff_ua", "kpszsu"])]
     hourly["official_msg_count"] = (
-        official.groupby("hour")["msg_id"].count().reindex(hourly.index, fill_value=0)
+        official.groupby("hour", observed=False)["msg_id"].count().reindex(hourly.index, fill_value=0)
     )
 
     hourly = hourly.reset_index().rename(columns={"hour": "datetime"})
@@ -602,10 +606,21 @@ def aggregate_hourly(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
 
     hourly = hourly.fillna(0).reset_index().rename(columns={"index": "datetime"})
 
+    for col in SUM_COLS + ["active_channels", "official_msg_count"]:
+        if col in hourly.columns:
+            hourly[col] = hourly[col].astype(np.int16)
+
+    if "total_msg_count" in hourly.columns:
+        hourly["total_msg_count"] = hourly["total_msg_count"].astype(np.int32)
+
+    for col in channel_counts.columns:
+        if col in hourly.columns:
+            hourly[col] = hourly[col].astype(np.int16)
+
     logger.info(f"Hourly rows: {len(hourly):,}")
     return hourly
 
-LAG_FEATURES = {
+LAG_FEATURES = [
     ("f_tu95",             3,  "tu95_lag3h"),
     ("f_tu160",            3,  "tu160_lag3h"),
     ("f_mig31",            2,  "mig31_lag2h"),
@@ -649,7 +664,7 @@ LAG_FEATURES = {
     ("f_drone_count",      1,  "drone_count_lag1h"),
     ("f_expl_confirm",    24,  "expl_confirm_lag24h"),
     ("f_x59",              1,  "x59_lag1h"),
-}
+]
 
 def apply_lags(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
     logger.info("Applying lags (anti-leakage)...")
@@ -662,7 +677,7 @@ def apply_lags(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
             logger.warning(f"  Column {src_col} not found, skipping lag {new_col}")
 
     lag_cols = [new_col for _, _, new_col in LAG_FEATURES]
-    df[lag_cols] = df[lag_cols].fillna(0).astype(int)
+    df[lag_cols] = df[lag_cols].fillna(0).astype(np.int16)
 
     logger.info(f"Lagged columns added: {len(lag_cols)}")
     return df
@@ -670,24 +685,24 @@ def apply_lags(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
 def add_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
     hour = df["datetime"].dt.hour
 
-    df["hour_sin"] = np.sin(2 * np.pi * hour / 24).round(4)
-    df["hour_cos"] = np.cos(2 * np.pi * hour / 24).round(4)
+    df["hour_sin"] = np.sin(2 * np.pi * hour / 24).astype(np.float32)
+    df["hour_cos"] = np.cos(2 * np.pi * hour / 24).astype(np.float32)
 
     dow = df["datetime"].dt.dayofweek
-    df["dow_sin"] = np.sin(2 * np.pi * dow / 7).round(4)
-    df["dow_cos"] = np.cos(2 * np.pi * dow / 7).round(4)
+    df["dow_sin"] = np.sin(2 * np.pi * dow / 7).astype(np.float32)
+    df["dow_cos"] = np.cos(2 * np.pi * dow / 7).astype(np.float32)
 
     week = df["datetime"].dt.isocalendar().week.astype(int)
-    df["week_sin"] = np.sin(2 * np.pi * week / 52).round(4)
-    df["week_cos"] = np.cos(2 * np.pi * week / 52).round(4)
+    df["week_sin"] = np.sin(2 * np.pi * week / 52).astype(np.float32)
+    df["week_cos"] = np.cos(2 * np.pi * week / 52).astype(np.float32)
 
-    df["is_exhaustion_window"] = hour.isin([0, 1, 2, 3, 4]).astype(int)
-    df["is_weekend"] = (dow >= 5).astype(int)
+    df["is_exhaustion_window"] = hour.isin([0, 1, 2, 3, 4]).astype(np.int8)
+    df["is_weekend"] = (dow >= 5).astype(np.int8)
 
     md = df["datetime"].dt.month * 100 + df["datetime"].dt.day
 
     sacred_dates = {224, 509, 628, 824, 1001, 1231, 101}
-    df["is_sacred_date"] = md.isin(sacred_dates).astype(int)
+    df["is_sacred_date"] = md.isin(sacred_dates).astype(np.int8)
 
     return df
 
@@ -702,11 +717,11 @@ def add_calm_phase(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFrame:
 
     last_massive = df["datetime"].where(massive_mask).ffill()
     delta_hours = (df["datetime"] - last_massive).dt.total_seconds() / 3600
-    df["hours_since_last_massive"] = delta_hours.fillna(0).astype(int)
+    df["hours_since_last_massive"] = delta_hours.fillna(0).astype(np.int16)
 
     df["calm_phase_risk"] = np.log1p(
         df["hours_since_last_massive"].clip(0, 240)
-    ).round(4)
+    ).astype(np.float32)
 
     return df
 
@@ -730,9 +745,14 @@ def add_rolling_features(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFra
         if col not in df.columns:
             continue
         shifted = df[col].shift(1)
-        roll_parts.append(shifted.rolling("3h", min_periods=1).sum().fillna(0).rename(f"{col}_roll3h").round(2))
-        roll_parts.append(shifted.rolling("6h", min_periods=1).sum().fillna(0).rename(f"{col}_roll6h").round(2))
-        roll_parts.append(shifted.rolling("24h", min_periods=1).sum().fillna(0).rename(f"{col}_roll24h").round(2))
+
+        dtype_to_use = np.int32 if col == "total_msg_count" else np.int16
+
+        roll_3h = shifted.rolling("3h", min_periods=1).sum().fillna(0).rename(f"{col}_roll3h").astype(dtype_to_use)
+        roll_6h = shifted.rolling("6h", min_periods=1).sum().fillna(0).rename(f"{col}_roll6h").astype(dtype_to_use)
+        roll_24h = shifted.rolling("24h", min_periods=1).sum().fillna(0).rename(f"{col}_roll24h").astype(dtype_to_use)
+
+        roll_parts.extend([roll_3h, roll_6h, roll_24h])
 
     if roll_parts:
         df = pd.concat([df] + roll_parts, axis=1).copy()
@@ -744,21 +764,26 @@ def add_rolling_features(df: pd.DataFrame, logger: logging.Logger) -> pd.DataFra
 def add_synergy_placeholders(df: pd.DataFrame) -> pd.DataFrame:
     df = pd.concat([
         df,
-        pd.Series(0.0, index=df.index, name="synergy_shahed_visibility"),
-        pd.Series(0.0, index=df.index, name="synergy_shahed_cloud"),
-        pd.Series(0.0, index=df.index, name="synergy_kab_wind"),
+        pd.Series(0.0, index=df.index, name="synergy_shahed_visibility", dtype=np.float32),
+        pd.Series(0.0, index=df.index, name="synergy_shahed_cloud", dtype=np.float32),
+        pd.Series(0.0, index=df.index, name="synergy_kab_wind", dtype=np.float32),
     ], axis=1)
     return df
 
 def build(since: datetime | None, debug: bool, logger: logging.Logger) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = OUT_DIR / "telegram_features_hourly.csv"
+    out_path = OUT_DIR / "telegram_features_hourly.parquet"
 
     logger.info("=" * 60)
     logger.info("TELEGRAM FEATURE EXTRACTOR — Silver Layer")
     logger.info("=" * 60)
 
     df_raw      = load_all_jsonl(since, logger)
+
+    if df_raw.empty:
+        logger.info("No records loaded. Exiting.")
+        return
+
     df_clean    = deduplicate_and_clean(df_raw, logger)
     df_feat     = extract_features_per_message(df_clean, logger)
     df_hourly   = aggregate_hourly(df_feat, logger)
@@ -768,10 +793,11 @@ def build(since: datetime | None, debug: bool, logger: logging.Logger) -> None:
     df_rolling  = add_rolling_features(df_calm, logger)
     df_final    = add_synergy_placeholders(df_rolling)
 
-    float_cols = df_final.select_dtypes(include="float64").columns
-    df_final[float_cols] = df_final[float_cols].round(4)
+    float_cols = df_final.select_dtypes(include=["float64"]).columns
+    if len(float_cols) > 0:
+        df_final[float_cols] = df_final[float_cols].astype(np.float32)
 
-    df_final.to_csv(out_path, index=False, encoding="utf-8")
+    df_final.to_parquet(out_path, index=False, compression="snappy")
 
     logger.info("")
     logger.info("=" * 60)
@@ -782,11 +808,10 @@ def build(since: datetime | None, debug: bool, logger: logging.Logger) -> None:
     logger.info("Next step: python data_processing/merge_datasets.py")
 
     if debug:
-        logger.debug("\nCSV columns:")
+        logger.debug("\nColumns:")
         for col in df_final.columns:
-            logger.debug(f"  {col}")
+            logger.debug(f"  {col} ({df_final[col].dtype})")
         logger.debug(f"\nFirst row:\n{df_final.iloc[0].to_dict()}")
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -800,7 +825,7 @@ Examples:
         """,
     )
     parser.add_argument("--build", action="store_true", required=True,
-                        help="Run CSV build")
+                        help="Run Parquet build")
     parser.add_argument("--since", default=None,
                         help="Process only from this date (YYYY-MM-DD)")
     parser.add_argument("--debug", action="store_true",

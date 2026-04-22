@@ -81,6 +81,13 @@ dmypy.json
 Thumbs.db
 desktop.ini
 
+data/raw/
+data/live/
+data/predictions/
+data/processed/
+*.parquet
+*.csv
+
 data/raw/isw_reports/html/*
 !data/raw/isw_reports/html/.gitkeep
 
