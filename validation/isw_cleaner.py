@@ -15,11 +15,11 @@ ISW_TEXT_DIR    = PROJECT_ROOT / "data" / "raw" / "isw_reports" / "text"
 ISW_SOURCES_DIR = PROJECT_ROOT / "data" / "raw" / "isw_sources"
 PROCESSED_DIR   = PROJECT_ROOT / "data" / "processed"
 
-OUTPUT_CSV   = PROCESSED_DIR / "isw_clean.csv"
-OUTPUT_TEXTS = PROCESSED_DIR / "isw_texts.json"
-TFIDF_MATRIX = PROCESSED_DIR / "isw_tfidf_matrix.npz"
-TFIDF_VOCAB  = PROCESSED_DIR / "isw_tfidf_vocab.json"
-REPORT_TXT   = PROCESSED_DIR / "isw_processing_report.txt"
+OUTPUT_PARQUET = PROCESSED_DIR / "isw_clean.parquet"
+OUTPUT_TEXTS   = PROCESSED_DIR / "isw_texts.json"
+TFIDF_MATRIX   = PROCESSED_DIR / "isw_tfidf_matrix.npz"
+TFIDF_VOCAB    = PROCESSED_DIR / "isw_tfidf_vocab.json"
+REPORT_TXT     = PROCESSED_DIR / "isw_processing_report.txt"
 
 WAR_START         = pd.Timestamp("2022-02-24")
 DATA_CUTOFF       = pd.Timestamp.today().normalize()
@@ -55,7 +55,6 @@ CASUALTY_WORDS = frozenset({
 TFIDF_MAX_FEATURES = 5000
 TFIDF_MIN_DF       = 5
 TFIDF_MAX_DF       = 0.95
-
 
 # Source network features
 # Based on data from isw_sources_scraper. Focuses on link structure between sources, not report text.
@@ -135,7 +134,6 @@ _SKIP_DOMAINS = {
     "storymaps.arcgis.com", "arcgis.com",
     "understandingwar.maps.arcgis.com", "arcg.is",
 }
-
 
 def _src_domain(url: str) -> str:
     try:
@@ -559,8 +557,8 @@ def process():
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
     df_save = df[available].copy()
-    df_save.to_csv(OUTPUT_CSV, index=False)
-    print(f"  saved {OUTPUT_CSV}  ({df_save.shape[0]:,} × {df_save.shape[1]})")
+    df_save.to_parquet(OUTPUT_PARQUET, index=False, compression="snappy")
+    print(f"  saved {OUTPUT_PARQUET.name}  ({df_save.shape[0]:,} × {df_save.shape[1]})")
 
     with open(OUTPUT_TEXTS, "w", encoding="utf-8") as f:
         json.dump(texts, f, ensure_ascii=False)

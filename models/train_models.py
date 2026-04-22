@@ -19,19 +19,19 @@ import xgboost as xgb
 
 warnings.filterwarnings("ignore")
 
-TEAM_ID      = "4"
+TEAM_ID = "4"
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-PROCESSED    = PROJECT_ROOT / "data" / "processed"
-MODELS_DIR   = PROJECT_ROOT / "models"
+PROCESSED = PROJECT_ROOT / "data" / "processed"
+MODELS_DIR = PROJECT_ROOT / "models"
 
-FEATURES_CSV = PROCESSED / "features_dataset.csv"
-REPORT_TXT   = MODELS_DIR / "training_report.txt"
+FEATURES_PARQUET = PROCESSED / "features_dataset.parquet"
+REPORT_TXT = MODELS_DIR / "training_report.txt"
 
-TARGET_COL  = "alarm"
+TARGET_COL = "alarm"
 N_CV_SPLITS = 3
 
 THRESHOLD_GREEN = 0.30
-THRESHOLD_RED   = 0.70
+THRESHOLD_RED = 0.70
 
 LEAKY_COLS = {
     "region", "datetime_hour", TARGET_COL,
@@ -48,22 +48,18 @@ def load_and_split() -> tuple:
     print("STEP 1/7: Load & temporal split")
     print("=" * 70)
 
-    if not FEATURES_CSV.exists():
-        sys.exit(f"  {FEATURES_CSV} not found — run feature_engineering.py --build")
+    if not FEATURES_PARQUET.exists():
+        sys.exit(f"  {FEATURES_PARQUET} not found — run feature_engineering.py --build")
 
-    df = pd.read_csv(FEATURES_CSV, low_memory=False)
+    df = pd.read_parquet(FEATURES_PARQUET)
+    if not pd.api.types.is_datetime64_any_dtype(df["datetime_hour"]):
+        df["datetime_hour"] = pd.to_datetime(df["datetime_hour"])
 
-    for col in df.select_dtypes("float64").columns:
-        df[col] = df[col].astype("float32")
-    for col in df.select_dtypes("int64").columns:
-        df[col] = df[col].astype("int32")
-
-    df["datetime_hour"] = pd.to_datetime(df["datetime_hour"])
     df = df.sort_values("datetime_hour").reset_index(drop=True)
 
     train_cutoff = df["datetime_hour"].max().floor("D") - pd.Timedelta(days=30)
     train_df = df[df["datetime_hour"] < train_cutoff].copy()
-    test_df  = df[df["datetime_hour"] >= train_cutoff].copy()
+    test_df = df[df["datetime_hour"] >= train_cutoff].copy()
 
     if len(test_df) == 0:
         sys.exit("     Test set is empty — check data range")
@@ -71,35 +67,37 @@ def load_and_split() -> tuple:
     drop_cols = [c for c in LEAKY_COLS if c in df.columns]
     X_train = train_df.drop(columns=drop_cols).fillna(0)
     y_train = train_df[TARGET_COL].astype(np.int8)
-    X_test  = test_df.drop(columns=drop_cols).fillna(0)
-    y_test  = test_df[TARGET_COL].astype(np.int8)
+    X_test = test_df.drop(columns=drop_cols).fillna(0)
+    y_test = test_df[TARGET_COL].astype(np.int8)
 
     tfidf_n = sum(1 for c in X_train.columns if c.startswith("tfidf_"))
-    ohe_n   = sum(1 for c in X_train.columns if c.startswith("region_"))
-    lag_n   = sum(1 for c in X_train.columns if "lag" in c or "roll" in c)
+    ohe_n = sum(1 for c in X_train.columns if c.startswith("region_"))
+    lag_n = sum(1 for c in X_train.columns if "lag" in c or "roll" in c)
 
     print(f"  Shape:     {df.shape}")
     print(f"  Range:     {df.datetime_hour.min().date()} → {df.datetime_hour.max().date()}")
     print(f"  Cutoff:    {train_cutoff.date()}")
-    print(f"  Train:     {len(train_df):,}  alarm={y_train.mean()*100:.2f}%")
-    print(f"  Test:      {len(test_df):,}   alarm={y_test.mean()*100:.2f}%")
+    print(f"  Train:     {len(train_df):,}  alarm={y_train.mean() * 100:.2f}%")
+    print(f"  Test:      {len(test_df):,}   alarm={y_test.mean() * 100:.2f}%")
     print(f"  Features:  {X_train.shape[1]}  "
           f"(tfidf={tfidf_n}  ohe={ohe_n}  lag/roll={lag_n}  "
-          f"other={X_train.shape[1]-tfidf_n-ohe_n-lag_n})")
+          f"other={X_train.shape[1] - tfidf_n - ohe_n - lag_n})")
 
     PROCESSED.mkdir(parents=True, exist_ok=True)
-    X_train.to_csv(PROCESSED / "X_train.csv", index=False)
-    y_train.to_csv(PROCESSED / "y_train.csv", index=False)
-    X_test.to_csv(PROCESSED  / "X_test.csv",  index=False)
-    y_test.to_csv(PROCESSED  / "y_test.csv",  index=False)
-    print(f"  Splits saved → {PROCESSED}")
+
+    X_train.to_parquet(PROCESSED / "X_train.parquet", index=False, compression="snappy")
+    pd.DataFrame(y_train).to_parquet(PROCESSED / "y_train.parquet", index=False, compression="snappy")
+    X_test.to_parquet(PROCESSED / "X_test.parquet", index=False, compression="snappy")
+    pd.DataFrame(y_test).to_parquet(PROCESSED / "y_test.parquet", index=False, compression="snappy")
+
+    print(f"  Splits saved (Parquet format) → {PROCESSED}")
 
     return X_train, y_train, X_test, y_test, train_cutoff
 
 def _find_optimal_threshold(y_true: np.ndarray, y_score: np.ndarray) -> float:
     prec, rec, thr = precision_recall_curve(y_true, y_score)
-    f1   = 2 * prec * rec / np.maximum(prec + rec, 1e-9)
-    idx  = int(np.argmax(f1[:-1]))
+    f1 = 2 * prec * rec / np.maximum(prec + rec, 1e-9)
+    idx = int(np.argmax(f1[:-1]))
     best = float(thr[idx])
     print(f"  Optimal threshold (OOF F1): {best:.3f}  "
           f"P={prec[idx]:.3f}  R={rec[idx]:.3f}  F1={f1[idx]:.3f}")
@@ -119,14 +117,14 @@ def _save_model(model, slug: str) -> Path:
     return path
 
 def _save_feature_importance(
-    importances: np.ndarray,
-    feature_names: list,
-    slug: str,
-    top_n: int = 20,
+        importances: np.ndarray,
+        feature_names: list,
+        slug: str,
+        top_n: int = 20,
 ) -> None:
-    idx   = np.argsort(importances)[::-1][:top_n]
+    idx = np.argsort(importances)[::-1][:top_n]
     names = [feature_names[i] for i in idx]
-    vals  = importances[idx]
+    vals = importances[idx]
 
     print(f"\n  Top {top_n} features [{slug}]:")
     tfidf_cnt = 0
@@ -143,13 +141,13 @@ def _save_feature_importance(
     )
 
 def _save_confusion_matrix(
-    y_true: np.ndarray,
-    y_pred: np.ndarray,
-    label: str,
+        y_true: np.ndarray,
+        y_pred: np.ndarray,
+        label: str,
 ) -> None:
-    cm  = confusion_matrix(y_true, y_pred)
+    cm = confusion_matrix(y_true, y_pred)
     tn, fp, fn, tp = cm.ravel()
-    miss  = fn / max(fn + tp, 1) * 100
+    miss = fn / max(fn + tp, 1) * 100
     false = fp / max(fp + tn, 1) * 100
     print(f"\n  Confusion Matrix [{label}] (Task 1e):")
     print(f"                       Predicted No    Predicted Yes")
@@ -164,9 +162,9 @@ def _save_confusion_matrix(
     print(f"    False alarm rate:{false:.1f}%")
 
 def train_lightgbm(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    tscv: TimeSeriesSplit,
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+        tscv: TimeSeriesSplit,
 ) -> tuple:
     print("\n" + "=" * 70)
     print("MODEL 1: LightGBM  (Microsoft, 2017)  +  GridSearchCV  — Task 1c")
@@ -188,13 +186,13 @@ def train_lightgbm(
         verbose=-1,
     )
     param_grid = {
-        "num_leaves":       [31, 63],
-        "learning_rate":    [0.05, 0.1],
+        "num_leaves": [31, 63],
+        "learning_rate": [0.05, 0.1],
         "colsample_bytree": [0.3, 0.6],
-        "reg_lambda":       [1.0, 5.0],
+        "reg_lambda": [1.0, 5.0],
     }
     n_combos = 2 ** 4
-    print(f"\n  GridSearchCV: {n_combos} combos × {N_CV_SPLITS} folds = {n_combos*N_CV_SPLITS} fits")
+    print(f"\n  GridSearchCV: {n_combos} combos × {N_CV_SPLITS} folds = {n_combos * N_CV_SPLITS} fits")
     print("  Scoring: roc_auc  |  n_jobs=1 (RAM-safe)  |  Running ...")
 
     grid = GridSearchCV(
@@ -208,23 +206,23 @@ def train_lightgbm(
     )
     grid.fit(X_train, y_train)
 
-    best_p     = grid.best_params_
+    best_p = grid.best_params_
     best_score = grid.best_score_
     print(f"\n  Best params: {best_p}")
     print(f"  Best CV AUC (GridSearch): {best_score:.4f}")
 
     final_params = {
         **best_p,
-        "objective":        "binary",
-        "metric":           "auc",
+        "objective": "binary",
+        "metric": "auc",
         "scale_pos_weight": pos_w,
-        "n_estimators":     400,
-        "random_state":     42,
-        "n_jobs":           1,
-        "verbose":          -1,
+        "n_estimators": 400,
+        "random_state": 42,
+        "n_jobs": 1,
+        "verbose": -1,
     }
 
-    splits    = list(tscv.split(X_train))
+    splits = list(tscv.split(X_train))
     total_val = sum(len(v) for _, v in splits)
     oof_scores = np.zeros(total_val, dtype=np.float32)
     oof_labels = np.zeros(total_val, dtype=np.int8)
@@ -236,7 +234,7 @@ def train_lightgbm(
     print("\n  Full CV with best params (OOF for threshold tuning):")
     for fold, (tr_i, val_i) in enumerate(splits, 1):
         X_tr, X_val = X_train.iloc[tr_i], X_train.iloc[val_i]
-        y_tr, y_val = y_train.iloc[tr_i],  y_train.iloc[val_i]
+        y_tr, y_val = y_train.iloc[tr_i], y_train.iloc[val_i]
 
         m = lgb.LGBMClassifier(**final_params)
         m.fit(
@@ -247,13 +245,13 @@ def train_lightgbm(
                 lgb.log_evaluation(-1),
             ],
         )
-        bi      = m.best_iteration_ if m.best_iteration_ > 0 else final_params["n_estimators"]
+        bi = m.best_iteration_ if m.best_iteration_ > 0 else final_params["n_estimators"]
         y_score = m.predict_proba(X_val)[:, 1]
-        y_pred  = m.predict(X_val)
+        y_pred = m.predict(X_val)
 
         size = len(val_i)
-        oof_scores[ptr:ptr+size] = y_score
-        oof_labels[ptr:ptr+size] = y_val.values
+        oof_scores[ptr:ptr + size] = y_score
+        oof_labels[ptr:ptr + size] = y_val.values
         ptr += size
         best_iters.append(bi)
 
@@ -261,8 +259,10 @@ def train_lightgbm(
         cv["f1"].append(f1_score(y_val, y_pred, zero_division=0))
         cv["recall"].append(recall_score(y_val, y_pred, zero_division=0))
         cv["precision"].append(precision_score(y_val, y_pred, zero_division=0))
-        try:    cv["roc_auc"].append(roc_auc_score(y_val, y_score))
-        except: cv["roc_auc"].append(0.5)
+        try:
+            cv["roc_auc"].append(roc_auc_score(y_val, y_score))
+        except:
+            cv["roc_auc"].append(0.5)
         print(f"    Fold {fold}: AUC={cv['roc_auc'][-1]:.4f}  best_iter={bi}")
 
     cv_summary = {k: (float(np.mean(v)), float(np.std(v))) for k, v in cv.items()}
@@ -280,9 +280,9 @@ def train_lightgbm(
     return final, cv_summary, best_p, thr
 
 def train_xgboost(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    tscv: TimeSeriesSplit,
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+        tscv: TimeSeriesSplit,
 ) -> tuple:
     print("\n" + "=" * 70)
     print("MODEL 2: XGBoost  (Chen & Guestrin, UW, 2016)  +  GridSearchCV")
@@ -308,13 +308,13 @@ def train_xgboost(
         verbosity=0,
     )
     param_grid = {
-        "max_depth":        [4, 6],
-        "learning_rate":    [0.05, 0.1],
+        "max_depth": [4, 6],
+        "learning_rate": [0.05, 0.1],
         "colsample_bytree": [0.3, 0.6],
-        "reg_lambda":       [1.0, 5.0],
+        "reg_lambda": [1.0, 5.0],
     }
     n_combos = 2 ** 4
-    print(f"\n  GridSearchCV: {n_combos} combos × {N_CV_SPLITS} folds = {n_combos*N_CV_SPLITS} fits")
+    print(f"\n  GridSearchCV: {n_combos} combos × {N_CV_SPLITS} folds = {n_combos * N_CV_SPLITS} fits")
     print("  Scoring: roc_auc  |  n_jobs=1 (RAM-safe)  |  Running ...")
 
     grid = GridSearchCV(
@@ -328,27 +328,27 @@ def train_xgboost(
     )
     grid.fit(X_train, y_train)
 
-    best_p     = grid.best_params_
+    best_p = grid.best_params_
     best_score = grid.best_score_
     print(f"\n  Best params: {best_p}")
     print(f"  Best CV AUC (GridSearch): {best_score:.4f}")
 
     final_params = {
         **best_p,
-        "objective":        "binary:logistic",
-        "eval_metric":      "auc",
-        "tree_method":      "hist",
+        "objective": "binary:logistic",
+        "eval_metric": "auc",
+        "tree_method": "hist",
         "min_child_weight": 50,
-        "subsample":        0.8,
-        "reg_alpha":        0.1,
+        "subsample": 0.8,
+        "reg_alpha": 0.1,
         "scale_pos_weight": pos_w,
-        "n_estimators":     400,
-        "random_state":     42,
-        "n_jobs":           1,
-        "verbosity":        0,
+        "n_estimators": 400,
+        "random_state": 42,
+        "n_jobs": 1,
+        "verbosity": 0,
     }
 
-    splits    = list(tscv.split(X_train))
+    splits = list(tscv.split(X_train))
     total_val = sum(len(v) for _, v in splits)
     oof_scores = np.zeros(total_val, dtype=np.float32)
     oof_labels = np.zeros(total_val, dtype=np.int8)
@@ -360,17 +360,17 @@ def train_xgboost(
     print("\n  Full CV with best params (OOF for threshold tuning):")
     for fold, (tr_i, val_i) in enumerate(splits, 1):
         X_tr, X_val = X_train.iloc[tr_i], X_train.iloc[val_i]
-        y_tr, y_val = y_train.iloc[tr_i],  y_train.iloc[val_i]
+        y_tr, y_val = y_train.iloc[tr_i], y_train.iloc[val_i]
 
         m = xgb.XGBClassifier(**final_params, early_stopping_rounds=50)
         m.fit(X_tr, y_tr, eval_set=[(X_val, y_val)], verbose=False)
-        bi      = m.best_iteration if m.best_iteration else final_params["n_estimators"]
+        bi = m.best_iteration if m.best_iteration else final_params["n_estimators"]
         y_score = m.predict_proba(X_val)[:, 1]
-        y_pred  = (y_score >= 0.5).astype(int)
+        y_pred = (y_score >= 0.5).astype(int)
 
         size = len(val_i)
-        oof_scores[ptr:ptr+size] = y_score
-        oof_labels[ptr:ptr+size] = y_val.values
+        oof_scores[ptr:ptr + size] = y_score
+        oof_labels[ptr:ptr + size] = y_val.values
         ptr += size
         best_iters.append(bi)
 
@@ -378,8 +378,10 @@ def train_xgboost(
         cv["f1"].append(f1_score(y_val, y_pred, zero_division=0))
         cv["recall"].append(recall_score(y_val, y_pred, zero_division=0))
         cv["precision"].append(precision_score(y_val, y_pred, zero_division=0))
-        try:    cv["roc_auc"].append(roc_auc_score(y_val, y_score))
-        except: cv["roc_auc"].append(0.5)
+        try:
+            cv["roc_auc"].append(roc_auc_score(y_val, y_score))
+        except:
+            cv["roc_auc"].append(0.5)
         print(f"    Fold {fold}: AUC={cv['roc_auc'][-1]:.4f}  best_iter={bi}")
 
     cv_summary = {k: (float(np.mean(v)), float(np.std(v))) for k, v in cv.items()}
@@ -397,9 +399,9 @@ def train_xgboost(
     return final, cv_summary, best_p, thr
 
 def train_histgbm(
-    X_train: pd.DataFrame,
-    y_train: pd.Series,
-    tscv: TimeSeriesSplit,
+        X_train: pd.DataFrame,
+        y_train: pd.Series,
+        tscv: TimeSeriesSplit,
 ) -> tuple:
     print("\n" + "=" * 70)
     print("MODEL 3: HistGradientBoostingClassifier  (scikit-learn)  +  GridSearchCV")
@@ -417,13 +419,13 @@ def train_histgbm(
         verbose=0,
     )
     param_grid = {
-        "max_depth":         [4, 6],
-        "learning_rate":     [0.05, 0.1],
-        "max_leaf_nodes":    [31, 63],
+        "max_depth": [4, 6],
+        "learning_rate": [0.05, 0.1],
+        "max_leaf_nodes": [31, 63],
         "l2_regularization": [0.1, 1.0],
     }
     n_combos = 2 ** 4
-    print(f"\n  GridSearchCV: {n_combos} combos × {N_CV_SPLITS} folds = {n_combos*N_CV_SPLITS} fits")
+    print(f"\n  GridSearchCV: {n_combos} combos × {N_CV_SPLITS} folds = {n_combos * N_CV_SPLITS} fits")
     print("  Scoring: roc_auc  |  n_jobs=1 (RAM-safe)  |  Running ...")
 
     grid = GridSearchCV(
@@ -437,24 +439,24 @@ def train_histgbm(
     )
     grid.fit(X_train, y_train)
 
-    best_p     = grid.best_params_
+    best_p = grid.best_params_
     best_score = grid.best_score_
     print(f"\n  Best params: {best_p}")
     print(f"  Best CV AUC (GridSearch): {best_score:.4f}")
 
     final_params = {
         **best_p,
-        "max_iter":            400,
-        "min_samples_leaf":    50,
-        "class_weight":        "balanced",
-        "early_stopping":      True,
+        "max_iter": 400,
+        "min_samples_leaf": 50,
+        "class_weight": "balanced",
+        "early_stopping": True,
         "validation_fraction": 0.1,
-        "n_iter_no_change":    50,
-        "random_state":        42,
-        "verbose":             0,
+        "n_iter_no_change": 50,
+        "random_state": 42,
+        "verbose": 0,
     }
 
-    splits    = list(tscv.split(X_train))
+    splits = list(tscv.split(X_train))
     total_val = sum(len(v) for _, v in splits)
     oof_scores = np.zeros(total_val, dtype=np.float32)
     oof_labels = np.zeros(total_val, dtype=np.int8)
@@ -465,24 +467,26 @@ def train_histgbm(
     print("\n  Full CV with best params (OOF for threshold tuning):")
     for fold, (tr_i, val_i) in enumerate(splits, 1):
         X_tr, X_val = X_train.iloc[tr_i], X_train.iloc[val_i]
-        y_tr, y_val = y_train.iloc[tr_i],  y_train.iloc[val_i]
+        y_tr, y_val = y_train.iloc[tr_i], y_train.iloc[val_i]
 
         m = HistGradientBoostingClassifier(**final_params)
         m.fit(X_tr, y_tr)
         y_score = m.predict_proba(X_val)[:, 1]
-        y_pred  = (y_score >= 0.5).astype(int)
+        y_pred = (y_score >= 0.5).astype(int)
 
         size = len(val_i)
-        oof_scores[ptr:ptr+size] = y_score
-        oof_labels[ptr:ptr+size] = y_val.values
+        oof_scores[ptr:ptr + size] = y_score
+        oof_labels[ptr:ptr + size] = y_val.values
         ptr += size
 
         cv["accuracy"].append(accuracy_score(y_val, y_pred))
         cv["f1"].append(f1_score(y_val, y_pred, zero_division=0))
         cv["recall"].append(recall_score(y_val, y_pred, zero_division=0))
         cv["precision"].append(precision_score(y_val, y_pred, zero_division=0))
-        try:    cv["roc_auc"].append(roc_auc_score(y_val, y_score))
-        except: cv["roc_auc"].append(0.5)
+        try:
+            cv["roc_auc"].append(roc_auc_score(y_val, y_score))
+        except:
+            cv["roc_auc"].append(0.5)
         print(f"    Fold {fold}: AUC={cv['roc_auc'][-1]:.4f}")
 
     cv_summary = {k: (float(np.mean(v)), float(np.std(v))) for k, v in cv.items()}
@@ -494,9 +498,9 @@ def train_histgbm(
     final.fit(X_train, y_train)
 
     print("  Computing permutation importance (subset 10k rows, 3 repeats) ...")
-    rng     = np.random.default_rng(42)
+    rng = np.random.default_rng(42)
     sub_idx = rng.choice(len(X_train), size=min(len(X_train), 10_000), replace=False)
-    perm    = permutation_importance(
+    perm = permutation_importance(
         final,
         X_train.iloc[sub_idx],
         y_train.iloc[sub_idx],
@@ -510,10 +514,10 @@ def train_histgbm(
     return final, cv_summary, best_p, thr
 
 def evaluate_on_test(
-    models: dict,
-    X_test: pd.DataFrame,
-    y_test: pd.Series,
-    thresholds: dict,
+        models: dict,
+        X_test: pd.DataFrame,
+        y_test: pd.Series,
+        thresholds: dict,
 ) -> dict:
     print("\n" + "=" * 70)
     print("STEP 5/7: Evaluate on TEST set")
@@ -525,14 +529,16 @@ def evaluate_on_test(
         print(f"\n  ── {name}  (threshold={thr:.3f}) ──")
 
         y_score = model.predict_proba(X_test)[:, 1]
-        y_pred  = (y_score >= thr).astype(int)
+        y_pred = (y_score >= thr).astype(int)
 
-        acc  = accuracy_score(y_test, y_pred)
-        f1   = f1_score(y_test, y_pred, zero_division=0)
+        acc = accuracy_score(y_test, y_pred)
+        f1 = f1_score(y_test, y_pred, zero_division=0)
         prec = precision_score(y_test, y_pred, zero_division=0)
-        rec  = recall_score(y_test, y_pred, zero_division=0)
-        try:    auc = roc_auc_score(y_test, y_score)
-        except: auc = 0.5
+        rec = recall_score(y_test, y_pred, zero_division=0)
+        try:
+            auc = roc_auc_score(y_test, y_score)
+        except:
+            auc = 0.5
 
         results[name] = dict(
             accuracy=acc, f1=f1, precision=prec, recall=rec,
@@ -546,17 +552,17 @@ def evaluate_on_test(
         print(f"  Recall:    {rec:.4f}")
         print(f"  ROC-AUC:   {auc:.4f}\n")
         print(classification_report(y_test, y_pred,
-              target_names=["no alarm", "alarm"], zero_division=0))
+                                    target_names=["no alarm", "alarm"], zero_division=0))
         _save_confusion_matrix(y_test.values, y_pred, name)
 
-        total  = len(y_score)
-        green  = (y_score < THRESHOLD_GREEN).sum()
+        total = len(y_score)
+        green = (y_score < THRESHOLD_GREEN).sum()
         yellow = ((y_score >= THRESHOLD_GREEN) & (y_score < THRESHOLD_RED)).sum()
-        red    = (y_score >= THRESHOLD_RED).sum()
+        red = (y_score >= THRESHOLD_RED).sum()
         print(f"  Map colours (Task 8):")
-        print(f"     🟢 Green  (p<{THRESHOLD_GREEN}): {green/total*100:.1f}%")
-        print(f"     🟡 Yellow ({THRESHOLD_GREEN}≤p<{THRESHOLD_RED}): {yellow/total*100:.1f}%")
-        print(f"     🔴 Red    (p≥{THRESHOLD_RED}): {red/total*100:.1f}%")
+        print(f"     🟢 Green  (p<{THRESHOLD_GREEN}): {green / total * 100:.1f}%")
+        print(f"     🟡 Yellow ({THRESHOLD_GREEN}≤p<{THRESHOLD_RED}): {yellow / total * 100:.1f}%")
+        print(f"     🔴 Red    (p≥{THRESHOLD_RED}): {red / total * 100:.1f}%")
 
     return results
 
@@ -576,10 +582,10 @@ def choose_best_model(cv_results: dict, test_results: dict) -> str:
 
     scores = {}
     for name, res in test_results.items():
-        cv_auc  = cv_results[name]["roc_auc"][0]
+        cv_auc = cv_results[name]["roc_auc"][0]
         overfit = cv_auc - res["roc_auc"]
         penalty = 0.03 if overfit > 0.05 else 0.0
-        score   = 0.4 * res["roc_auc"] + 0.4 * res["recall"] + 0.2 * res["f1"] - penalty
+        score = 0.4 * res["roc_auc"] + 0.4 * res["recall"] + 0.2 * res["f1"] - penalty
         scores[name] = score
         print(f"  {name:22s}  Score={score:.4f}  "
               f"(AUC={res['roc_auc']:.3f}  Rec={res['recall']:.3f}  "
@@ -590,12 +596,12 @@ def choose_best_model(cv_results: dict, test_results: dict) -> str:
     return best
 
 def save_report(
-    cv_results: dict,
-    test_results: dict,
-    best_params: dict,
-    best_name: str,
-    feature_names: list,
-    cutoff: pd.Timestamp,
+        cv_results: dict,
+        test_results: dict,
+        best_params: dict,
+        best_name: str,
+        feature_names: list,
+        cutoff: pd.Timestamp,
 ) -> None:
     print("\n" + "=" * 70)
     print("STEP 7/7: Save report")
@@ -659,12 +665,12 @@ def save_report(
         f.write("\n" + "=" * 70 + "\nCOMPARISON TABLE\n" + "=" * 70 + "\n")
         f.write(f"  {'Model':22s}  {'CV AUC':>9s}  {'Test AUC':>9s}"
                 f"  {'F1':>7s}  {'Recall':>7s}  {'Overfit':>8s}\n")
-        f.write(f"  {'-'*68}\n")
+        f.write(f"  {'-' * 68}\n")
         for mname in test_results:
             cv_auc = cv_results[mname]["roc_auc"][0]
-            r      = test_results[mname]
-            gap    = cv_auc - r["roc_auc"]
-            star   = "  <- BEST" if mname == best_name else ""
+            r = test_results[mname]
+            gap = cv_auc - r["roc_auc"]
+            star = "  <- BEST" if mname == best_name else ""
             f.write(f"  {mname:22s}  {cv_auc:>9.4f}  {r['roc_auc']:>9.4f}"
                     f"  {r['f1']:>7.4f}  {r['recall']:>7.4f}  {gap:>+8.4f}{star}\n")
 
@@ -708,27 +714,27 @@ def train() -> None:
 
     models = {
         "LightGBM": lgbm_m,
-        "XGBoost":  xgb_m,
-        "HistGBM":  hist_m,
+        "XGBoost": xgb_m,
+        "HistGBM": hist_m,
     }
     thresholds = {
         "LightGBM": lgbm_thr,
-        "XGBoost":  xgb_thr,
-        "HistGBM":  hist_thr,
+        "XGBoost": xgb_thr,
+        "HistGBM": hist_thr,
     }
     cv_results = {
         "LightGBM": lgbm_cv,
-        "XGBoost":  xgb_cv,
-        "HistGBM":  hist_cv,
+        "XGBoost": xgb_cv,
+        "HistGBM": hist_cv,
     }
     best_params_all = {
         "LightGBM": lgbm_p,
-        "XGBoost":  xgb_p,
-        "HistGBM":  hist_p,
+        "XGBoost": xgb_p,
+        "HistGBM": hist_p,
     }
 
     test_results = evaluate_on_test(models, X_test, y_test, thresholds)
-    best_name    = choose_best_model(cv_results, test_results)
+    best_name = choose_best_model(cv_results, test_results)
     save_report(
         cv_results, test_results, best_params_all,
         best_name, X_train.columns.tolist(), cutoff,
@@ -740,13 +746,13 @@ def train() -> None:
     print()
     print(f"  {'Model':22s}  {'CV AUC':>9s}  {'Test AUC':>9s}"
           f"  {'F1':>7s}  {'Recall':>7s}  {'Overfit':>8s}  {'Thr':>6s}")
-    print(f"  {'-'*72}")
+    print(f"  {'-' * 72}")
     for name in models:
         cv_auc = cv_results[name]["roc_auc"][0]
-        r      = test_results[name]
-        gap    = cv_auc - r["roc_auc"]
-        star   = "  <- BEST" if name == best_name else ""
-        over   = "  overfit" if gap > 0.05 else ""
+        r = test_results[name]
+        gap = cv_auc - r["roc_auc"]
+        star = "  <- BEST" if name == best_name else ""
+        over = "  overfit" if gap > 0.05 else ""
         print(f"  {name:22s}  {cv_auc:>9.4f}  {r['roc_auc']:>9.4f}"
               f"  {r['f1']:>7.4f}  {r['recall']:>7.4f}"
               f"  {gap:>+8.4f}  {r['threshold']:>6.3f}{star}{over}")

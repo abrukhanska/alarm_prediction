@@ -1,4 +1,5 @@
 "use client";
+
 interface PulsingDotProps {
   color?: string;
   size?: number;

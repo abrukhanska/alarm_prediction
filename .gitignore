@@ -1,8 +1,8 @@
-pycache/
+# Python
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
-
 .Python
 build/
 develop-eggs/
@@ -10,6 +10,7 @@ dist/
 downloads/
 eggs/
 .eggs/
+lib/
 lib64/
 parts/
 sdist/
@@ -20,13 +21,12 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-
 *.manifest
 *.spec
-
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Testing & coverage
 htmlcov/
 .tox/
 .nox/
@@ -40,19 +40,18 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+test_data/
 
-*.mo
-*.pot
-
-*.log
-
+# Jupyter
 .ipynb_checkpoints
-
 profile_default/
 ipython_config.py
 
+# Environments
 .env
 .envrc
+.env.local
+.env.*.local
 .venv
 env/
 venv/
@@ -60,6 +59,7 @@ ENV/
 env.bak/
 venv.bak/
 
+# IDE / editors
 .idea/
 .vscode/
 *.swp
@@ -70,6 +70,7 @@ venv.bak/
 .project
 .ropeproject
 
+# Type checkers / linters
 .mypy_cache/
 .dmypy.json
 dmypy.json
@@ -77,10 +78,21 @@ dmypy.json
 .pytype/
 .ruff_cache/
 
+# OS
 .DS_Store
 Thumbs.db
 desktop.ini
 
+# Logs
+logs/*
+!logs/.gitkeep
+
+# Models
+models/*.pkl
+models/training_report.txt
+models/feature_importance_*.csv
+
+# Data: raw
 data/raw/isw_reports/html/*
 !data/raw/isw_reports/html/.gitkeep
 
@@ -105,27 +117,45 @@ data/raw/telegram/*
 data/raw/war_events/*
 !data/raw/war_events/.gitkeep
 
+# Data: processed
 data/processed/*
-data/processed/*.csv
 !data/processed/.gitkeep
 
+# Data: live (poller output)
+data/live/*
+!data/live/.gitkeep
+
+# ─Data: predictions
+data/predictions/*
+!data/predictions/.gitkeep
+
+data/raw/gur/*
+
+# Loose data files in project root / data/
 data/*.csv
 data/*.json
 data/*.parquet
 data/*.xlsx
+*.parquet
+*.csv
 
-logs/*
-!logs/.gitkeep
-
-models/*.pkl
-models/training_report.txt
-models/*.csv
-
+# Analysis plots
 analysis/plots/models/*.png
-analysis/plots/*.png
 analysis/plots/features/*.png
-test_data/
+analysis/plots/*.png
 
+# Telegram session
+*.session
 .telethon_session.session
 
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# Compiled Python
 *.pyc

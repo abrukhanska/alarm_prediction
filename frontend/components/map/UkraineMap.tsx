@@ -1,124 +1,143 @@
 "use client";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps";
-import { AnimatePresence } from "framer-motion";
-import { SHAPE_NAME_TO_ID } from "@/lib/regions";
-import { RegionAlarm } from "@/lib/types";
-import { threatColor } from "@/lib/colors";
-import MapTooltip from "./MapTooltip";
+import { AnimatePresence, motion } from "framer-motion";
+import { SHAPE_TO_BACKEND, SHAPE_NAME_TO_ID, REGION_LABELS } from "@/lib/regions";
+import type { RegionForecast } from "@/lib/types";
+import { probToColor, hexToRgba, RISK_LEVEL_LABELS } from "@/lib/colors";
 
 const GEO_URL = "/geo/ukraine-adm1.json";
 
-const REGION_LABELS: Record<string, { coords: [number, number], name: string }> = {
-  "kyiv_oblast": { coords: [30.52, 50.45], name: "KYIV" }, // Ставимо напис KYIV замість області
-  "lviv": { coords: [24.03, 49.84], name: "Lviv" },
-  "odesa": { coords: [30.72, 46.48], name: "Odesa" },
-  "kharkiv": { coords: [36.23, 50.00], name: "Kharkiv" },
-  "dnipropetrovsk": { coords: [35.04, 48.46], name: "Dnipro" },
-  "zaporizhzhia": { coords: [35.13, 47.83], name: "Zaporizhzhia" },
-  "donetsk": { coords: [37.80, 48.01], name: "Donetsk" },
-  "luhansk": { coords: [39.30, 48.57], name: "Luhansk" },
-  "kherson": { coords: [32.61, 46.63], name: "Kherson" },
-  "crimea": { coords: [34.10, 44.95], name: "Crimea" },
-  "mykolaiv": { coords: [31.99, 46.97], name: "Mykolaiv" },
-  "vinnytsia": { coords: [28.46, 49.23], name: "Vinnytsia" },
-  "chernihiv": { coords: [31.28, 51.50], name: "Chernihiv" },
-  "poltava": { coords: [34.55, 49.58], name: "Poltava" },
-  "sumy": { coords: [34.79, 50.90], name: "Sumy" },
-  "cherkasy": { coords: [32.05, 49.44], name: "Cherkasy" },
-  "khmelnytskyi": { coords: [26.98, 49.42], name: "Khmelnytskyi" },
-  "zhytomyr": { coords: [28.65, 50.25], name: "Zhytomyr" },
-  "chernivtsi": { coords: [25.93, 48.29], name: "Chernivtsi" },
-  "rivne": { coords: [26.25, 50.61], name: "Rivne" },
-  "ivano_frankivsk": { coords: [24.71, 48.92], name: "Ivano-Frankivsk" },
-  "ternopil": { coords: [25.59, 49.55], name: "Ternopil" },
-  "volyn": { coords: [25.32, 50.74], name: "Lutsk" },
-  "zakarpattia": { coords: [22.28, 48.62], name: "Uzhhorod" },
-  "kirovohrad": { coords: [32.26, 48.50], name: "Kropyvnytskyi" },
-};
-
 interface UkraineMapProps {
-  alarms: RegionAlarm[];
+  regions: Record<string, RegionForecast>;
+  selectedHour: number;
   selectedRegion: string | null;
-  onSelectRegion: (id: string) => void;
+  onSelectRegion: (backendName: string) => void;
 }
 
-export default function UkraineMap({ alarms, selectedRegion, onSelectRegion }: UkraineMapProps) {
-  const [tooltip, setTooltip] = useState<{ id: string; name: string; x: number; y: number } | null>(null);
-  const alarmMap = new Map(alarms.map((a) => [a.id, a]));
+interface TooltipState {
+  backendName: string;
+  shapeName: string;
+  x: number;
+  y: number;
+}
 
-  const handleHover = (id: string | null, name: string, x: number, y: number) => {
-    if (id) setTooltip({ id, name, x, y });
-    else setTooltip(null);
+export default function UkraineMap({
+  regions,
+  selectedHour,
+  selectedRegion,
+  onSelectRegion,
+}: UkraineMapProps) {
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+
+  const handleEnter = (shapeName: string, x: number, y: number) => {
+    const backendName = SHAPE_TO_BACKEND[shapeName];
+    if (backendName) setTooltip({ backendName, shapeName, x, y });
   };
+  const handleLeave = () => setTooltip(null);
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center p-4">
+    <div className="relative w-full h-full flex items-center justify-center">
+      <div
+        className="absolute inset-0 pointer-events-none z-10 opacity-[0.025]"
+        style={{
+          backgroundImage: "repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,229,255,0.5) 3px, rgba(0,229,255,0.5) 4px)",
+        }}
+      />
+
       <ComposableMap
         projection="geoMercator"
-        projectionConfig={{ center: [31.5, 48.5], scale: 2300 }}
-        className="w-full h-full max-h-[90vh] object-contain drop-shadow-2xl"
+        projectionConfig={{ center: [31.5, 49.0], scale: 2400 }}
+        className="w-full h-full object-contain"
+        style={{ filter: "drop-shadow(0 0 30px rgba(0,100,200,0.15))" }}
       >
         <Geographies geography={GEO_URL}>
           {({ geographies }) => (
             <>
               {geographies.map((geo) => {
-                const shapeName = geo.properties.shapeName as string;
-                const regionId = SHAPE_NAME_TO_ID[shapeName] ?? shapeName;
-                const alarm = alarmMap.get(regionId);
-                const color = threatColor(alarm?.threat_level ?? "safe");
-                const isActive = alarm?.active ?? false;
-                const isSelected = selectedRegion === regionId;
+                const shapeName: string = geo.properties.shapeName ?? geo.properties.NAME_1 ?? "";
+                const backendName = SHAPE_TO_BACKEND[shapeName];
+                const regionData = backendName ? regions[backendName] : undefined;
+
+                const prob = regionData?.hourly_data[selectedHour]?.probability ?? 0;
+                const isLive = regionData?.is_live_alarm_now ?? false;
+                const isSelected = selectedRegion === backendName;
+                const color = probToColor(prob);
 
                 return (
                   <Geography
                     key={geo.rsmKey}
                     geography={geo}
-                    fill={color}
-                    fillOpacity={isSelected ? 0.9 : isActive ? 0.6 : 0.3}
-                    stroke={isActive ? "#ef4444" : isSelected ? "#06b6d4" : "#1e3a5f"}
-                    strokeWidth={isActive ? 1.5 : isSelected ? 2 : 0.5}
-                    className={isActive ? "pulse-alarm" : ""}
+                    fill={hexToRgba(color, isSelected ? 0.85 : isLive ? 0.65 : prob > 0 ? 0.4 : 0.15)}
+                    stroke={
+                      isLive
+                        ? "#ff1a3d"
+                        : isSelected
+                        ? "#00e5ff"
+                        : "rgba(30,60,100,0.6)"
+                    }
+                    strokeWidth={isLive ? 1.8 : isSelected ? 2 : 0.5}
+                    className={isLive ? "live-alarm-region" : ""}
                     style={{
-                      default: { outline: "none", transition: "all 0.4s ease" },
-                      hover: { outline: "none", fillOpacity: 0.8, cursor: "pointer", stroke: "#06b6d4" },
+                      default: {
+                        outline: "none",
+                        transition: "all 0.35s ease",
+                        filter: isLive ? `drop-shadow(0 0 6px #ff1a3d)` : "none",
+                      },
+                      hover: {
+                        outline: "none",
+                        fillOpacity: 0.9,
+                        cursor: backendName ? "pointer" : "default",
+                        stroke: "#00e5ff",
+                        filter: "drop-shadow(0 0 4px rgba(0,229,255,0.4))",
+                      },
                       pressed: { outline: "none" },
                     }}
-                    onMouseEnter={(e) => handleHover(regionId, shapeName, e.clientX, e.clientY)}
-                    onMouseMove={(e) => handleHover(regionId, shapeName, e.clientX, e.clientY)}
-                    onMouseLeave={() => handleHover(null, "", 0, 0)}
-                    onClick={() => onSelectRegion(regionId)}
+                    onMouseEnter={(e) => handleEnter(shapeName, e.clientX, e.clientY)}
+                    onMouseMove={(e) =>
+                      setTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null)
+                    }
+                    onMouseLeave={handleLeave}
+                    onClick={() => backendName && onSelectRegion(backendName)}
                   />
                 );
               })}
 
               {geographies.map((geo) => {
-                const shapeName = geo.properties.shapeName;
-                const regionId = SHAPE_NAME_TO_ID[shapeName] ?? shapeName;
-                const regionData = REGION_LABELS[regionId];
-                const alarm = alarmMap.get(regionId);
-                if (!regionData) return null;
+                const shapeName: string = geo.properties.shapeName ?? "";
+                const slug = SHAPE_NAME_TO_ID[shapeName];
+                const markerData = slug ? REGION_LABELS[slug] : undefined;
+                if (!markerData) return null;
+
+                const backendName = SHAPE_TO_BACKEND[shapeName];
+                const regionData = backendName ? regions[backendName] : undefined;
+                const isLive = regionData?.is_live_alarm_now ?? false;
 
                 return (
-                  <Marker key={`marker-${regionId}`} coordinates={regionData.coords}>
-                    {alarm?.active && (
-                      <g>
-                        <circle r="6" className="radar-circle" />
-                        <circle r="6" className="radar-circle" style={{ animationDelay: '1s' }} />
+                  <Marker key={`m-${slug}`} coordinates={markerData.coords}>
+                    {isLive && (
+                      <g style={{ pointerEvents: "none" }}>
+                        <circle r="8" fill="none" stroke="#ff1a3d" strokeWidth="1.5" opacity="0.8"
+                          style={{ animation: "radarPing 1.8s ease-out infinite", transformBox: "fill-box", transformOrigin: "center" }} />
+                        <circle r="8" fill="none" stroke="#ff6b00" strokeWidth="1" opacity="0.5"
+                          style={{ animation: "radarPing 1.8s ease-out infinite 0.6s", transformBox: "fill-box", transformOrigin: "center" }} />
+                        <circle r="4" fill="#ff1a3d" opacity="0.95"
+                          style={{ animation: "pulseCore 1.2s ease-in-out infinite" }} />
                       </g>
                     )}
                     <text
                       textAnchor="middle"
-                      y={2}
-                      className="region-label"
-                      style={{ 
-                        fontSize: regionId === "kyiv_oblast" ? "7px" : "6px", 
-                        fontWeight: "800", 
-                        fill: "#fff", 
-                        pointerEvents: "none"
+                      y={isLive ? 14 : 2}
+                      style={{
+                        fontSize: slug === "kyiv_oblast" || slug === "kyiv" ? "6.5px" : "5.5px",
+                        fontFamily: "'Share Tech Mono', monospace",
+                        fontWeight: "bold",
+                        fill: isLive ? "#ff8888" : "rgba(255,255,255,0.55)",
+                        pointerEvents: "none",
+                        letterSpacing: "0.05em",
                       }}
                     >
-                      {regionData.name}
+                      {markerData.name}
                     </text>
                   </Marker>
                 );
@@ -129,10 +148,104 @@ export default function UkraineMap({ alarms, selectedRegion, onSelectRegion }: U
       </ComposableMap>
 
       <AnimatePresence>
-        {tooltip && (
-          <MapTooltip x={tooltip.x} y={tooltip.y} region={alarmMap.get(tooltip.id)} shapeName={tooltip.name} />
-        )}
+        {tooltip && (() => {
+          const rd = regions[tooltip.backendName];
+          const prob = rd?.hourly_data[selectedHour]?.probability ?? 0;
+          const weather = rd?.hourly_data[selectedHour]?.weather;
+          const color = probToColor(prob);
+          const isLive = rd?.is_live_alarm_now ?? false;
+
+          return (
+            <motion.div
+              key="tooltip"
+              initial={{ opacity: 0, scale: 0.92, y: 4 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              transition={{ duration: 0.12 }}
+              className="pointer-events-none fixed z-50 rounded-lg px-3 py-2.5 text-xs shadow-2xl"
+              style={{
+                left: tooltip.x + 14,
+                top: tooltip.y - 14,
+                background: "rgba(5, 10, 22, 0.95)",
+                border: `1px solid ${hexToRgba(color, 0.5)}`,
+                boxShadow: `0 0 20px ${hexToRgba(color, 0.2)}`,
+                minWidth: 160,
+                fontFamily: "'Share Tech Mono', monospace",
+              }}
+            >
+
+              <div className="font-bold text-white text-sm mb-1.5 flex items-center gap-2">
+                {isLive && (
+                  <span
+                    className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
+                    style={{ background: "#ff1a3d" }}
+                  />
+                )}
+                {tooltip.backendName.replace(" Oblast", "").replace("City of ", "")}
+                {isLive && (
+                  <span className="text-[9px] font-bold tracking-wider" style={{ color: "#ff1a3d" }}>
+                    ● ALARM ACTIVE
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 mb-1">
+                <div className="flex-1 h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${prob}%`, background: color, boxShadow: `0 0 4px ${color}` }}
+                  />
+                </div>
+                <span style={{ color, minWidth: 32, textAlign: "right" }}>{prob}%</span>
+              </div>
+
+              {weather && (
+                <div className="text-[10px] flex gap-3 opacity-70 text-slate-300 mt-1.5">
+                  <span>🌡 {weather.temp}°</span>
+                  <span>💨 {weather.wind}km/h</span>
+                  <span>☁ {weather.cloudcover}%</span>
+                </div>
+              )}
+
+              {rd && (
+                <div className="text-[9px] mt-1 opacity-50 text-slate-400">
+                  24h max: {Math.round(rd.max_probability * 100)}% · {RISK_LEVEL_LABELS[rd.risk_level] ?? rd.risk_level}
+                </div>
+              )}
+            </motion.div>
+          );
+        })()}
       </AnimatePresence>
+
+      <div
+        className="absolute bottom-3 right-3 z-20 rounded-lg p-2.5 border"
+        style={{
+          background: "rgba(3, 7, 18, 0.85)",
+          borderColor: "rgba(0,229,255,0.1)",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <div className="text-[7.5px] font-black tracking-[0.2em] uppercase mb-1.5" style={{ color: "#4fc3f7" }}>
+          THREAT LEVEL
+        </div>
+        {[
+          { label: "SAFE",     color: "#004d2e" },
+          { label: "LOW",      color: "#66dd00" },
+          { label: "MEDIUM",   color: "#ffc800" },
+          { label: "HIGH",     color: "#ff6b00" },
+          { label: "CRITICAL", color: "#ff1a3d" },
+        ].map(({ label, color }) => (
+          <div key={label} className="flex items-center gap-2 mb-0.5">
+            <div
+              className="w-2 h-2 rounded-sm"
+              style={{ background: color, boxShadow: `0 0 4px ${color}44` }}
+            />
+            <span className="text-[7px] font-bold tracking-wider" style={{ color: "#64748b" }}>
+              {label}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

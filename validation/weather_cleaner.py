@@ -1,6 +1,6 @@
 """
 --process: full reprocess from JSON files in data/raw/weather/historical/
---incremental: append new rows from CSVs in data/raw/weather/new/ to weather_clean.csv
+--incremental: append new rows from CSVs in data/raw/weather/new/ to weather_clean.parquet
 """
 import argparse
 import json
@@ -13,7 +13,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 HISTORICAL_DIR = PROJECT_ROOT / "data" / "raw" / "weather" / "historical"
 NEW_DIR = PROJECT_ROOT / "data" / "raw" / "weather" / "new"
-OUTPUT_CSV = PROJECT_ROOT / "data" / "processed" / "weather_clean.csv"
+OUTPUT_PARQUET = PROJECT_ROOT / "data" / "processed" / "weather_clean.parquet"
 REPORT_TXT = PROJECT_ROOT / "data" / "processed" / "weather_processing_report.txt"
 
 EXPECTED_HOURS = 24
@@ -66,9 +66,8 @@ def safe_float(val: Any) -> float | None:
     except (ValueError, TypeError):
         return None
 
-def _normalize_city(addr: str) -> str:
-    city = str(addr).split(",")[0].strip()
-    return CITY_NORMALIZE.get(city, city)
+def _normalize_city(addr: pd.Series) -> pd.Series:
+    return addr.astype(str).str.split(",").str[0].str.strip().replace(CITY_NORMALIZE)
 
 def _core_clean(df: pd.DataFrame, errors: list, cutoff: pd.Timestamp) -> pd.DataFrame:
     df["datetime_hour"] = pd.to_datetime(df["datetime_hour"], errors="coerce")
@@ -85,7 +84,7 @@ def _core_clean(df: pd.DataFrame, errors: list, cutoff: pd.Timestamp) -> pd.Data
         errors.append(f"FUTURE: {future} rows after {cutoff.date()} - dropped")
         df = df[df["datetime_hour"] <= cutoff]
 
-    df["city_address"] = df["city_address"].apply(_normalize_city)
+    df["city_address"] = _normalize_city(df["city_address"])
     for col in ["city_latitude", "city_longitude"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -136,8 +135,7 @@ def _core_clean(df: pd.DataFrame, errors: list, cutoff: pd.Timestamp) -> pd.Data
     fill_cols = [c for c in RANGES if c in df.columns]
     nans_before = df[fill_cols].isna().sum().sum()
     for col in fill_cols:
-        df[col] = df.groupby("city_address", group_keys=False)[col].apply(
-            lambda x: x.ffill(limit=MAX_FILL_HOURS).bfill(limit=MAX_FILL_HOURS))
+        df[col] = df.groupby("city_address")[col].ffill(limit=MAX_FILL_HOURS).bfill(limit=MAX_FILL_HOURS)
     nans_after = df[fill_cols].isna().sum().sum()
     filled = nans_before - nans_after
     if filled:
@@ -184,11 +182,19 @@ def _core_clean(df: pd.DataFrame, errors: list, cutoff: pd.Timestamp) -> pd.Data
 
     drop_cols = [
         c for c in ["hour_datetime", "day_conditions", "hour_conditions",
-                    "day_icon", "hour_icon"]
+                    "day_icon", "hour_icon", "date"]
         if c in df.columns
     ]
     if drop_cols:
         df = df.drop(columns=drop_cols)
+
+    for col, dtype in CLEAN_DTYPES.items():
+        if col in df.columns:
+            df[col] = df[col].astype(dtype)
+
+    for col in list(RANGES.keys()) + NUMERIC_COLS + ["temp_diff", "pressure_trend"]:
+        if col in df.columns:
+            df[col] = df[col].astype("float32")
 
     return df
 
@@ -203,7 +209,6 @@ def _load_json_to_df(errors: list) -> pd.DataFrame:
     skipped = 0
 
     for fp in all_files:
-        city = fp.parent.name.replace("_", " ").strip()
         try:
             with open(fp, encoding="utf-8") as f:
                 data = json.load(f)
@@ -211,6 +216,8 @@ def _load_json_to_df(errors: list) -> pd.DataFrame:
             errors.append(f"FILE ERROR: {fp.name} - {e}")
             skipped += 1
             continue
+
+        city = data.get("address", fp.parent.name.replace("_", " ").strip())
 
         if "daily" in data and isinstance(data["daily"], dict):
             daily_data = data["daily"]
@@ -282,11 +289,15 @@ def _load_new_csv(errors: list, cutoff_dt: pd.Timestamp | None = None) -> pd.Dat
     if cutoff_dt is not None:
         cutoff_date = cutoff_dt.date()
         before_filter = len(csv_files)
-        csv_files = [
-            fp for fp in csv_files
-            if _date_from_filename(fp) is not None
-            and _date_from_filename(fp) >= cutoff_date
-        ]
+
+        filtered_files = []
+        for fp in csv_files:
+            dt = _date_from_filename(fp)
+            if dt is not None and dt >= cutoff_date:
+                filtered_files.append(fp)
+
+        csv_files = filtered_files
+
         skipped = before_filter - len(csv_files)
         if skipped:
             print(f"Skipped {skipped} already-processed file(s) (date < {cutoff_date})")
@@ -321,7 +332,7 @@ def _date_from_filename(fp: Path) -> "date | None":
         return None
 
 def _print_summary(df: pd.DataFrame, n_raw: int, errors: list, mode: str) -> None:
-    region_counts = df.groupby("city_address").size()
+    region_counts = df.groupby("city_address", observed=False).size()
     print()
     print("-" * 60)
     print(f"WEATHER PROCESSING COMPLETE  [{mode}]")
@@ -374,7 +385,8 @@ def _save_report(df: pd.DataFrame, n_raw: int, errors: list, mode: str) -> None:
 
 def process() -> None:
     errors: list[str] = []
-    cutoff = pd.Timestamp.now().normalize()
+    # Use floor("D") plus 1 day to be safe, or just keep normalize() but be aware
+    cutoff = pd.Timestamp.now().normalize() + pd.Timedelta(days=1)
     print(f"\n{'-'*65}")
     print("WEATHER PROCESSOR  [FULL MODE]")
     print(f"{'-'*65}")
@@ -393,29 +405,26 @@ def process() -> None:
         print("ERROR: DataFrame empty after cleaning")
         return
 
-    OUTPUT_CSV.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(OUTPUT_CSV, index=False)
-    print(f"\n  Saved: {OUTPUT_CSV}  ({df.shape[0]:,} × {df.shape[1]})")
+    OUTPUT_PARQUET.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(OUTPUT_PARQUET, index=False, compression="snappy")
+    print(f"\n  Saved: {OUTPUT_PARQUET}  ({df.shape[0]:,} × {df.shape[1]})")
 
     _save_report(df, n_raw, errors, "FULL")
     _print_summary(df, n_raw, errors, "FULL")
 
 def process_incremental() -> None:
     errors: list[str] = []
-    cutoff = pd.Timestamp.now().normalize()
+    cutoff = pd.Timestamp.now().normalize() + pd.Timedelta(days=1)
 
     print(f"\n{'-'*65}")
     print("WEATHER PROCESSOR  [INCREMENTAL MODE]")
     print(f"{'-'*65}")
 
-    if not OUTPUT_CSV.exists():
-        print("No existing weather_clean.csv — run --process first.")
+    if not OUTPUT_PARQUET.exists():
+        print("No existing weather_clean.parquet — run --process first.")
         return
 
-    _dtypes = {**CLEAN_DTYPES,
-               **{c: "float32" for c in list(RANGES.keys()) + NUMERIC_COLS
-                  if c not in CLEAN_DTYPES}}
-    existing = pd.read_csv(OUTPUT_CSV, parse_dates=["datetime_hour"], dtype=_dtypes)
+    existing = pd.read_parquet(OUTPUT_PARQUET)
     print(f"Existing rows: {len(existing):,}")
     print(f"Existing range: {existing['datetime_hour'].min().date()} - "
           f"{existing['datetime_hour'].max().date()}")
@@ -441,7 +450,16 @@ def process_incremental() -> None:
                   .drop_duplicates(subset=["city_address", "datetime_hour"], keep="last")
                   .sort_values(["city_address", "datetime_hour"])
                   .reset_index(drop=True))
-    combined.to_csv(OUTPUT_CSV, index=False)
+
+    for col, dtype in CLEAN_DTYPES.items():
+        if col in combined.columns:
+            combined[col] = combined[col].astype(dtype)
+
+    for col in list(RANGES.keys()) + NUMERIC_COLS + ["temp_diff", "pressure_trend"]:
+        if col in combined.columns:
+            combined[col] = combined[col].astype("float32")
+
+    combined.to_parquet(OUTPUT_PARQUET, index=False, compression="snappy")
     truly_new = len(combined) - len(existing)
 
     if errors:
@@ -452,18 +470,18 @@ def process_incremental() -> None:
     print(f"\n{'-'*65}")
     print("INCREMENTAL COMPLETE")
     print(f"New rows added: {truly_new:,}")
-    print(f"Total rows: {len(combined):,} → {OUTPUT_CSV.name}")
+    print(f"Total rows: {len(combined):,} → {OUTPUT_PARQUET.name}")
     print(f"New range max: {combined['datetime_hour'].max().date()}")
     print(f"{'-'*65}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process weather data to weather_clean.csv",
+    parser = argparse.ArgumentParser(description="Process weather data to weather_clean.parquet",
                                      formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog=__doc__,)
     parser.add_argument("--process", action="store_true",
                         help="Full reprocess from JSON files (run once to build base)",)
     parser.add_argument("--incremental", action="store_true",
-                        help="Append only new CSV rows to existing weather_clean.csv",)
+                        help="Append only new CSV rows to existing weather_clean.parquet",)
     args = parser.parse_args()
     if args.process:
         process()
