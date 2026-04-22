@@ -1,44 +1,27 @@
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+import type { ForecastResponse } from "./types";
 
-export async function fetchPrediction(region: string) {
-  const res = await fetch(`${API_BASE}/api/predict/${region}`);
-  if (!res.ok) throw new Error(`Failed to fetch prediction for ${region}`);
-  return res.json();
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+
+export async function fetchForecast(): Promise<ForecastResponse> {
+  const res = await fetch(`${API_BASE}/api/forecast`);
+  if (!res.ok) throw new Error(`Forecast unavailable (${res.status})`);
+  return res.json() as Promise<ForecastResponse>;
 }
 
-export async function fetchCurrentAlarms() {
-  const res = await fetch(`${API_BASE}/api/current-alarms`);
-  if (!res.ok) throw new Error("Failed to fetch current alarms");
-  return res.json();
-}
-
-export async function fetchWeather(region: string) {
-  const res = await fetch(`${API_BASE}/api/weather/${region}`);
-  if (!res.ok) throw new Error(`Failed to fetch weather for ${region}`);
-  return res.json();
-}
-
-export async function fetchTimeline(region: string) {
-  const res = await fetch(`${API_BASE}/api/timeline/${region}`);
-  if (!res.ok) throw new Error(`Failed to fetch timeline for ${region}`);
-  return res.json();
-}
-
-export async function fetchStats() {
-  const res = await fetch(`${API_BASE}/api/stats`);
-  if (!res.ok) throw new Error("Failed to fetch stats");
-  return res.json();
-}
-
-export async function fetchForecast(region: string = "all") {
-  const res = await fetch(`${API_BASE}/api/forecast?region=${encodeURIComponent(region)}`);
-  if (!res.ok) throw new Error("Failed to fetch forecast");
-  return res.json();
-}
-
-export async function triggerForecastUpdate() {
+export async function triggerForecastUpdate(): Promise<{ status: string; message: string }> {
   const res = await fetch(`${API_BASE}/api/update-forecast`, { method: "POST" });
-  if (!res.ok) throw new Error("Failed to trigger forecast update");
+  if (!res.ok) throw new Error(`Update failed (${res.status})`);
+  return res.json();
+}
+
+export async function triggerRetrain(): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/retrain`, { method: "POST" });
+  if (!res.ok) throw new Error(`Retrain failed (${res.status})`);
+  return res.json();
+}
+
+export async function fetchHealth(): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/api/health`);
+  if (!res.ok) throw new Error("Health check failed");
   return res.json();
 }

@@ -15,14 +15,13 @@ export default function AnimatedNumber({
   duration = 800,
 }: AnimatedNumberProps) {
   const [display, setDisplay] = useState(value);
-  const startRef = useRef(value);
   const startTimeRef = useRef<number | null>(null);
+  const fromRef = useRef(value);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const from = display;
-    const to = value;
-    startRef.current = from;
+    fromRef.current = from;
     startTimeRef.current = null;
 
     const animate = (ts: number) => {
@@ -30,7 +29,7 @@ export default function AnimatedNumber({
       const elapsed = ts - startTimeRef.current;
       const progress = Math.min(elapsed / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplay(from + (to - from) * eased);
+      setDisplay(from + (value - from) * eased);
       if (progress < 1) {
         rafRef.current = requestAnimationFrame(animate);
       }
