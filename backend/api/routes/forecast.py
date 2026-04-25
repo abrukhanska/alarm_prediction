@@ -2,6 +2,8 @@ import json
 import subprocess
 import sys
 import time
+import fcntl
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -55,22 +57,42 @@ def _to_hour_weather(w: dict) -> dict:
         "icon":       _icon(temp_val, precip, cloudcover),
     }
 
-def _run_script(script_path: Path) -> None:
+def _is_ml_busy() -> bool:
+    lock_file = "/tmp/ml_heavy.lock"
+    try:
+        fd = os.open(lock_file, os.O_CREAT | os.O_RDWR)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+        return False
+    except BlockingIOError:
+        return True
+
+def _run_predict() -> None:
+    cmd = f"flock -n /tmp/ml_heavy.lock {_python_executable()} {PREDICT_SCRIPT}"
     try:
         subprocess.Popen(
-            [_python_executable(), str(script_path)],
+            cmd,
+            shell=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        print(f"[{script_path.name}] Background process launched successfully.")
+        print(f"[{PREDICT_SCRIPT.name}] Background predict launched safely.")
     except Exception as e:
-        print(f"[{script_path.name}] Exception during launch: {e}")
-
-def _run_predict() -> None:
-    _run_script(PREDICT_SCRIPT)
+        print(f"[{PREDICT_SCRIPT.name}] Exception during launch: {e}")
 
 def _run_retrain() -> None:
-    _run_script(RETRAIN_SCRIPT)
+    cmd = f"flock -n /tmp/ml_heavy.lock {_python_executable()} {RETRAIN_SCRIPT} --validation-days 7"
+    try:
+        subprocess.Popen(
+            cmd,
+            shell=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        print(f"[{RETRAIN_SCRIPT.name}] Background retrain launched safely.")
+    except Exception as e:
+        print(f"[{RETRAIN_SCRIPT.name}] Exception during launch: {e}")
 
 @router.get("/api/forecast", response_model=GodForecastResponse)
 async def get_god_forecast():
@@ -163,12 +185,18 @@ async def get_god_forecast():
 
 @router.post("/api/update-forecast")
 async def update_forecast(background_tasks: BackgroundTasks):
+    if _is_ml_busy():
+        raise HTTPException(
+            status_code=429,
+            detail="Сервер зараз виконує важкий ML-процес (оновлення даних або ретрейн). Будь ласка, зачекайте кілька хвилин.",
+        )
+
     background_tasks.add_task(_run_predict)
     return {
-        "status":    "accepted",
-        "message":   "Prediction update started in background",
+        "status": "accepted",
+        "message": "Prediction update started in background. Server locked.",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "check_at":  "GET /api/forecast (available in ~30s)",
+        "check_at": "GET /api/forecast (available in ~30s)",
     }
 
 @router.post("/api/admin/retrain")
@@ -178,31 +206,41 @@ async def trigger_retrain(background_tasks: BackgroundTasks):
             status_code=404,
             detail=f"Retrain script not found: {RETRAIN_SCRIPT}",
         )
+    if _is_ml_busy():
+        raise HTTPException(
+            status_code=429,
+            detail="Сервер зараз виконує обробку даних або інший ретрейн. Будь ласка, зачекайте 15-30 хвилин.",
+        )
+
     background_tasks.add_task(_run_retrain)
     return {
-        "status":    "CI/CD Pipeline started",
-        "message":   "A/B validation and model retrain launched in background",
+        "status": "CI/CD Pipeline started",
+        "message": "A/B validation and model retrain launched in background. Server is locked for other ML tasks.",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "script":    str(RETRAIN_SCRIPT),
+        "script": str(RETRAIN_SCRIPT),
     }
 
 @router.get("/api/health")
 async def health():
-    live   = _live_state()
+    live = _live_state()
     wtoday = _weather_today()
+
+    is_busy = _is_ml_busy()
+
     return {
-        "status":    "ok",
+        "status": "ok",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "ml_server_busy": is_busy,
         "latest_json_exists": LATEST_JSON.exists(),
-        "latest_json_age_s":  (
+        "latest_json_age_s": (
             round(
                 datetime.now(timezone.utc).timestamp() - LATEST_JSON.stat().st_mtime,
                 1,
             )
             if LATEST_JSON.exists() else None
         ),
-        "live_state_ok":            live is not None,
-        "live_alarms_count":        int(live.get("active_alarms_count", 0)) if live else None,
-        "weather_today_ok":         wtoday is not None,
+        "live_state_ok": live is not None,
+        "live_alarms_count": int(live.get("active_alarms_count", 0)) if live else None,
+        "weather_today_ok": wtoday is not None,
         "weather_today_generated_at": wtoday.get("generated_at") if wtoday else None,
     }

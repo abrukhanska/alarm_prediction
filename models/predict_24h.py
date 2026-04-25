@@ -37,7 +37,7 @@ LOG_PATH = LOGS_DIR / "predict_24h.log"
 LIVE_STATE_JSON = PROJECT_ROOT / "data" / "live" / "live_state.json"
 
 TARGET_COL = "alarm"
-_BOOTSTRAP_THRESHOLD = 0.612
+_BOOTSTRAP_THRESHOLD = 0.572
 FORECAST_HOURS = 24
 ALARM_BUFFER_DEPTH = 30
 
@@ -179,11 +179,8 @@ def _update_lag_features(fvec: FeatureVector, alarm_buffer: list[int]) -> Featur
     buf = alarm_buffer
     if len(buf) < 24:
         buf = [0] * (24 - len(buf)) + buf
-    if "alarm_lag_1h"    in fvec: fvec["alarm_lag_1h"]    = int(buf[-1])
-    if "alarm_lag_3h"    in fvec: fvec["alarm_lag_3h"]    = int(buf[-3])
-    if "alarm_lag_6h"    in fvec: fvec["alarm_lag_6h"]    = int(buf[-6])
-    if "alarm_lag_24h"   in fvec: fvec["alarm_lag_24h"]   = int(buf[-24])
-    if "alarms_last_24h" in fvec: fvec["alarms_last_24h"] = int(sum(buf[-24:]))
+    fvec["alarm_lag_1h"] = int(buf[-1])
+    fvec["alarm_lag_3h"] = int(buf[-3])
     return fvec
 
 def _update_synergy_features(fvec: FeatureVector) -> FeatureVector:
@@ -208,15 +205,44 @@ def _update_synergy_features(fvec: FeatureVector) -> FeatureVector:
     if "syn_prestrike_night" in fvec:
         fvec["syn_prestrike_night"] = int(
             (fvec.get("prestrike_lag2h", 0) > 0) and is_night)
-    if "inter_alarm_spreading" in fvec:
-        fvec["inter_alarm_spreading"] = int(
-            bool(fvec.get("alarm_lag_1h", 0)) and (n_reg_1h > 0))
     if "syn_energy_stress_multi" in fvec:
         fvec["syn_energy_stress_multi"] = int(
             bool(fvec.get("energy_stress", 0)) and (n_reg_1h > 3))
     if "syn_ballistic_multiregion" in fvec:
         fvec["syn_ballistic_multiregion"] = int(
             (fvec.get("ballistic_lag1h", 0) > 0) and (n_reg_1h > 5))
+    return fvec
+
+
+def _clear_expired_signals(fvec: FeatureVector, step: int) -> FeatureVector:
+    """
+    Clears lag and rolling features if the forecast step exceeds their temporal horizon.
+    Prevents the model from hallucinating eternal alarms based on past events.
+    """
+    fvec = fvec.copy()
+
+    exempt = {"n_regions_lag_1h", "n_regions_lag_3h", "n_regions_momentum"}
+
+    for key in list(fvec.keys()):
+        if key in exempt:
+            continue
+
+        if "_lag" in key and key.endswith("h"):
+            try:
+                lag_hours = int(key.split("_lag")[-1].replace("h", ""))
+                if step > lag_hours:
+                    fvec[key] = 0
+            except ValueError:
+                pass
+
+        elif "_roll" in key and key.endswith("h"):
+            try:
+                roll_hours = int(key.split("_roll")[-1].replace("h", ""))
+                if step > roll_hours:
+                    fvec[key] = 0
+            except ValueError:
+                pass
+
     return fvec
 
 def predict_all_regions_24h(
@@ -261,6 +287,7 @@ def predict_all_regions_24h(
         X_rows = []
         for region in region_order:
             fvec = _update_time_features(states[region], pred_dt)
+            fvec = _clear_expired_signals(fvec, step)
             fvec = _update_lag_features(fvec, buffers[region])
 
             if "n_regions_lag_1h"   in fvec: fvec["n_regions_lag_1h"]   = curr_n_reg_1h

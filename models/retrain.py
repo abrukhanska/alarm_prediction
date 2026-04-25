@@ -50,13 +50,15 @@ LEAKY_COLS = {
     "n_regions_alarm", "n_regions_alarm_lag_2h",
     "n_regions_alarm_lag_3h", "n_regions_alarm_momentum",
     "alarm_lag_1h", "alarm_lag_2h", "alarm_lag_3h",
+    "alarm_lag_6h", "alarm_lag_12h", "alarm_lag_24h",
+    "alarms_last_24h",
 }
 
 BEST_PARAMS_LIGHTGBM = {
     "colsample_bytree": 0.3,
     "learning_rate":    0.05,
-    "num_leaves":       31,
-    "reg_lambda":       5.0,
+    "num_leaves":       63,
+    "reg_lambda":       1.0,
     "objective":        "binary",
     "metric":           "auc",
     "n_estimators":     400,
@@ -65,9 +67,10 @@ BEST_PARAMS_LIGHTGBM = {
     "random_state":     42,
     "n_jobs":           1,
     "verbose":          -1,
+    "max_bin":          63,
 }
 
-_BOOTSTRAP_THRESHOLD = 0.612
+_BOOTSTRAP_THRESHOLD = 0.572
 
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 

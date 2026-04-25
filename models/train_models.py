@@ -38,6 +38,8 @@ LEAKY_COLS = {
     "n_regions_alarm", "n_regions_alarm_lag_2h",
     "n_regions_alarm_lag_3h", "n_regions_alarm_momentum",
     "alarm_lag_1h", "alarm_lag_2h", "alarm_lag_3h",
+    "alarm_lag_6h", "alarm_lag_12h", "alarm_lag_24h",
+    "alarms_last_24h",
 }
 
 def _pkl_name(slug: str) -> str:
