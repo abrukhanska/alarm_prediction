@@ -220,7 +220,7 @@ def build_isw_tfidf(
 
     for start_idx in range(0, tfidf.shape[0], chunk_size):
         end_idx = min(start_idx + chunk_size, tfidf.shape[0])
-        chunk_dense = np.round(tfidf[start_idx:end_idx].toarray(), 4).astype(np.float32)
+        chunk_dense = np.round(tfidf[start_idx:end_idx].toarray(), 4).astype(np.float16)
         chunk_df = pd.DataFrame(
             chunk_dense,
             index=df_i.index[start_idx:end_idx],
@@ -284,7 +284,7 @@ def merge_core(
         df[col] = df[col].fillna(0).astype(np.float32)
 
     for col in tfidf_cols:
-        df[col] = df[col].fillna(0).astype(np.float32)
+        df[col] = df[col].fillna(0).astype(np.float16)
 
     df = df.sort_values(["region", "datetime_hour"]).reset_index(drop=True)
     return df
