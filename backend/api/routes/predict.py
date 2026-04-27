@@ -8,7 +8,7 @@ from ..data.real_data import REGION_SLUG_MAP
 
 router = APIRouter()
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 LATEST_JSON  = PROJECT_ROOT / "data" / "predictions" / "latest.json"
 
 THREAT_LEVELS = {

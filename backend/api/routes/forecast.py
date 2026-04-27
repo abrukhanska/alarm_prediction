@@ -21,7 +21,7 @@ from ..models.schemas import GodForecastResponse
 
 router = APIRouter()
 
-PROJECT_ROOT    = Path(__file__).resolve().parent.parent.parent
+PROJECT_ROOT    = Path(__file__).resolve().parent.parent.parent.parent
 PREDICTIONS_DIR = PROJECT_ROOT / "data" / "predictions"
 LATEST_JSON     = PREDICTIONS_DIR / "latest.json"
 PREDICT_SCRIPT  = PROJECT_ROOT / "models" / "predict_24h.py"
