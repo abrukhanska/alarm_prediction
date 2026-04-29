@@ -128,20 +128,20 @@ export default function NationalRiskGauge({ value, liveAlarms, regionsAtRisk }: 
       <canvas
         ref={canvasRef}
         width={200}
-        height={110}
-        className="w-full max-w-[200px]"
+        height={120}
+        className="w-full max-w-[220px]"
       />
 
       <div
         className="absolute font-mono text-2xl font-black tracking-wider"
-        style={{ color, bottom: 28, textShadow: `0 0 20px ${color}` }}
+        style={{ color, bottom: 42, textShadow: `0 0 20px ${color}` }}
       >
         {value}
         <span className="text-sm ml-0.5 opacity-70">%</span>
       </div>
 
       <div
-        className={`text-[9px] font-black tracking-[0.2em] uppercase mt-1 text-center px-2 py-0.5 rounded border ${
+        className={`text-[9px] font-black tracking-[0.2em] uppercase mt-3 text-center px-2 py-0.5 rounded border ${
           isCritical ? "animate-pulse" : ""
         }`}
         style={{
