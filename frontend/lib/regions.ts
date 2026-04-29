@@ -57,11 +57,10 @@ export const SHAPE_TO_BACKEND: Record<string, string> = {
   "Kirovohrad Oblast":            "Kirovohrad Oblast",
   "Kyiv (city)":                  "City of Kyiv",
   "Kyiv City":                    "City of Kyiv",
-  "Kyiv":                         "City of Kyiv",
 };
 
 export const REGION_LABELS: Record<string, { coords: [number, number]; name: string }> = {
-  kyiv_oblast:      { coords: [30.00, 50.20], name: "KYIV OBL" },
+  kyiv_oblast:      { coords: [30.52, 50.45], name: "KYIV OBL" },
   kyiv:             { coords: [30.52, 50.45], name: "KYIV" },
   lviv:             { coords: [24.03, 49.84], name: "LVIV" },
   odesa:            { coords: [30.72, 46.48], name: "ODESA" },
