@@ -67,7 +67,7 @@ export const REGION_LABELS: Record<string, { coords: [number, number]; name: str
   odesa:            { coords: [30.72, 46.48], name: "ODESA" },
   kharkiv:          { coords: [36.23, 50.00], name: "KHARKIV" },
   dnipropetrovsk:   { coords: [35.04, 48.46], name: "DNIPRO" },
-  zaporizhzhia:     { coords: [35.13, 47.83], name: "ZAPORIZHZHIA" },
+  zaporizhzhia:     { coords: [35.50, 47.50], name: "ZAPORIZHZHIA" },
   donetsk:          { coords: [37.80, 48.01], name: "DONETSK" },
   luhansk:          { coords: [39.30, 48.57], name: "LUHANSK" },
   kherson:          { coords: [32.61, 46.63], name: "KHERSON" },
@@ -86,4 +86,6 @@ export const REGION_LABELS: Record<string, { coords: [number, number]; name: str
   volyn:            { coords: [25.32, 50.74], name: "LUTSK" },
   zakarpattia:      { coords: [22.28, 48.62], name: "UZHHOROD" },
   kirovohrad:       { coords: [32.26, 48.50], name: "KROPYVNYTSKYI" },
+  crimea:           { coords: [34.10, 45.25], name: "CRIMEA" },
+  sevastopol:       { coords: [33.52, 44.58], name: "SEVASTOPOL" },
 };
