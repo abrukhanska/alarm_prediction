@@ -85,4 +85,6 @@ export const REGION_LABELS: Record<string, { coords: [number, number]; name: str
   volyn:            { coords: [25.32, 50.74], name: "LUTSK" },
   zakarpattia:      { coords: [22.28, 48.62], name: "UZHHOROD" },
   kirovohrad:       { coords: [32.26, 48.50], name: "KROPYVNYTSKYI" },
+  crimea:           { coords: [34.10, 45.30], name: "CRIMEA" },
+  sevastopol:       { coords: [33.52, 44.60], name: "SEVASTOPOL" },
 };
