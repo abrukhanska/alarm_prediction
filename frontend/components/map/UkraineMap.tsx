@@ -74,9 +74,9 @@ export default function UkraineMap({
                         ? "#ff1a3d"
                         : isSelected
                         ? "#00e5ff"
-                        : "rgba(100,160,200,0.55)"
+                        : "rgba(120,170,210,0.30)"
                     }
-                    strokeWidth={isLive ? 2.2 : isSelected ? 2.5 : 1.0}
+                    strokeWidth={isLive ? 2.0 : isSelected ? 2.2 : 0.7}
                     className={isLive ? "live-alarm-region" : ""}
                     style={{
                       default: {
