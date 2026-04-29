@@ -13,6 +13,7 @@ from typing import TypeAlias
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
 warnings.filterwarnings("ignore")
 
@@ -120,7 +121,19 @@ def load_feature_data(
         sys.exit(1)
 
     log.info(f"Loading {FEATURES_PARQUET} (Parquet)…")
-    df = pd.read_parquet(FEATURES_PARQUET)
+    pf = pq.ParquetFile(FEATURES_PARQUET)
+    max_dt = None
+    for batch in pf.iter_batches(columns=["datetime_hour"], batch_size=50_000):
+        s = pd.to_datetime(batch.column("datetime_hour").to_pandas())
+        if max_dt is None or s.max() > max_dt:
+            max_dt = s.max()
+
+    cutoff = max_dt - pd.Timedelta(hours=64)  # 30 buffer + 24 forecast + 10
+
+    df = pd.read_parquet(
+        FEATURES_PARQUET,
+        filters=[("datetime_hour", ">=", cutoff.to_pydatetime())]
+    )
 
     if not pd.api.types.is_datetime64_any_dtype(df["datetime_hour"]):
         df["datetime_hour"] = pd.to_datetime(df["datetime_hour"])
@@ -179,8 +192,17 @@ def _update_lag_features(fvec: FeatureVector, alarm_buffer: list[int]) -> Featur
     buf = alarm_buffer
     if len(buf) < 24:
         buf = [0] * (24 - len(buf)) + buf
-    fvec["alarm_lag_1h"] = int(buf[-1])
-    fvec["alarm_lag_3h"] = int(buf[-3])
+
+    if "alarm_lag_1h"  in fvec: fvec["alarm_lag_1h"]  = int(buf[-1])
+    if "alarm_lag_2h"  in fvec: fvec["alarm_lag_2h"]  = int(buf[-2])
+    if "alarm_lag_3h"  in fvec: fvec["alarm_lag_3h"]  = int(buf[-3])
+    if "alarm_lag_6h"  in fvec: fvec["alarm_lag_6h"]  = int(buf[-6])
+    if "alarm_lag_12h" in fvec: fvec["alarm_lag_12h"] = int(buf[-12])
+    if "alarm_lag_24h" in fvec: fvec["alarm_lag_24h"] = int(buf[-24])
+    if "alarms_last_6h"  in fvec: fvec["alarms_last_6h"]  = int(sum(buf[-6:]))
+    if "alarms_last_12h" in fvec: fvec["alarms_last_12h"] = int(sum(buf[-12:]))
+    if "alarms_last_24h" in fvec: fvec["alarms_last_24h"] = int(sum(buf[-24:]))
+
     return fvec
 
 def _update_synergy_features(fvec: FeatureVector) -> FeatureVector:
@@ -287,7 +309,6 @@ def predict_all_regions_24h(
         X_rows = []
         for region in region_order:
             fvec = _update_time_features(states[region], pred_dt)
-            fvec = _clear_expired_signals(fvec, step)
             fvec = _update_lag_features(fvec, buffers[region])
 
             if "n_regions_lag_1h"   in fvec: fvec["n_regions_lag_1h"]   = curr_n_reg_1h
