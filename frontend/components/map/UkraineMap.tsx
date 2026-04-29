@@ -68,15 +68,15 @@ export default function UkraineMap({
                   <Geography
                     key={geo.rsmKey}
                     geography={geo}
-                    fill={hexToRgba(color, isSelected ? 0.90 : isLive ? 0.70 : prob === 0 ? 0.65 : 0.50)}
+                    fill={hexToRgba(color, isSelected ? 0.85 : isLive ? 0.65 : prob > 0 ? 0.4 : 0.15)}
                     stroke={
                       isLive
                         ? "#ff1a3d"
                         : isSelected
                         ? "#00e5ff"
-                        : "rgba(30,60,100,0.6)"
+                        : "rgba(100,160,200,0.55)"
                     }
-                    strokeWidth={isLive ? 1.8 : isSelected ? 2 : 0.5}
+                    strokeWidth={isLive ? 2.2 : isSelected ? 2.5 : 1.0}
                     className={isLive ? "live-alarm-region" : ""}
                     style={{
                       default: {

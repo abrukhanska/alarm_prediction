@@ -123,7 +123,7 @@ export default function ForecastTimeline({
         </div>
       </div>
 
-      <div className="flex gap-[3px] items-end h-14">
+      <div className="flex gap-[3px] items-end h-16">
         {bars.map(({ prob, color, label, weather, isAlarm }, i) => {
           const isSelected = i === selectedHour;
           return (
@@ -137,14 +137,14 @@ export default function ForecastTimeline({
             >
               {weather && (
                 <div className={`mb-0.5 transition-opacity duration-200 ${isSelected ? "opacity-100" : "opacity-40"}`}>
-                  <WeatherIcon icon={weather.icon} size={16} />
+                  <WeatherIcon icon={weather.icon} size={18} />
                 </div>
               )}
               <motion.div
                 className="w-full rounded-sm relative overflow-hidden"
                 animate={{
-                  height:  20,
-                  opacity: isSelected ? 1 : prob > 0 ? 0.7 : 0.12,
+                  height:  18,
+                  opacity: isSelected ? 1 : prob > 0 ? 0.72 : 0.14,
                 }}
                 transition={{ duration: 0.15 }}
                 style={{
