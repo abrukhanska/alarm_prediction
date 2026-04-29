@@ -76,11 +76,11 @@ export default function RegionDrawer({
 
   const chartData = regionData.hourly_data.map((item) => ({
     hour: item.hour.includes("T") ? item.hour.slice(11, 16) : item.hour,
-    probability: item.probability ?? 0,
-    wind: item.weather?.wind ?? 0,
-    alarm: item.alarm ?? false,
-    cloudcover: item.weather?.cloudcover ?? 0,
-    humidity: item.weather?.humidity ?? 0,
+    probability: item.probability,
+    wind: item.weather.wind,
+    alarm: item.alarm,
+    cloudcover: item.weather.cloudcover,
+    humidity: item.weather.humidity,
   }));
 
   const alarmHours = regionData.hourly_data.filter((h) => h.alarm);
@@ -256,7 +256,7 @@ export default function RegionDrawer({
                   strokeWidth={1}
                 />
 
-                <Bar yAxisId="wind" dataKey="wind" opacity={0.35} radius={[1, 1, 0, 0]} minPointSize={2}>
+                <Bar yAxisId="wind" dataKey="wind" opacity={0.35} radius={[1, 1, 0, 0]}>
                   {chartData.map((entry, i) => (
                     <Cell key={i} fill={i === selectedHour ? "#60a5fa" : "#1d4ed8"} />
                   ))}
@@ -312,7 +312,7 @@ export default function RegionDrawer({
                       color: "#ff6680",
                     }}
                   >
-                   {h.weather?.icon && <WeatherIcon icon={h.weather.icon} size={9} />}
+                   <WeatherIcon icon={h.weather.icon} size={9} />
                     {h.hour.includes("T") ? h.hour.slice(11, 16) : h.hour}
                   </div>
                 ))}
