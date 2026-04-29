@@ -312,7 +312,7 @@ export default function RegionDrawer({
                       color: "#ff6680",
                     }}
                   >
-                   <WeatherIcon icon={h.weather.icon} size={12} />
+                   <WeatherIcon icon={h.weather.icon} size={9} />
                     {h.hour.includes("T") ? h.hour.slice(11, 16) : h.hour}
                   </div>
                 ))}

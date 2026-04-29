@@ -6,15 +6,6 @@ import { SHAPE_TO_BACKEND, SHAPE_NAME_TO_ID, REGION_LABELS } from "@/lib/regions
 import type { RegionForecast } from "@/lib/types";
 import { probToColor, hexToRgba, RISK_LEVEL_LABELS } from "@/lib/colors";
 
-// Tone down neon colors: safe=brighter green, alarm colors less neon
-function adjustColor(color: string, prob: number): string {
-  if (prob === 0) return "#1a5c3a"; // brighter safe green
-  if (prob < 25) return "#1e6b40";  // light safe green
-  // For high threat colors, we keep them but slightly desaturate via opacity in fill
-  return color;
-}
-
-
 const GEO_URL = "/geo/ukraine-adm1.json";
 
 interface UkraineMapProps {
@@ -77,7 +68,7 @@ export default function UkraineMap({
                   <Geography
                     key={geo.rsmKey}
                     geography={geo}
-                    fill={prob === 0 ? (isSelected ? "#2a8a56" : "#1a5c3a") : hexToRgba(color, isSelected ? 0.75 : isLive ? 0.55 : 0.35)}
+                    fill={hexToRgba(color, isSelected ? 0.90 : isLive ? 0.70 : prob === 0 ? 0.65 : 0.50)}
                     stroke={
                       isLive
                         ? "#ff1a3d"
@@ -238,7 +229,7 @@ export default function UkraineMap({
           THREAT LEVEL
         </div>
         {[
-          { label: "SAFE",     color: "#1a5c3a" },
+          { label: "SAFE",     color: "#004d2e" },
           { label: "LOW",      color: "#66dd00" },
           { label: "MEDIUM",   color: "#ffc800" },
           { label: "HIGH",     color: "#ff6b00" },

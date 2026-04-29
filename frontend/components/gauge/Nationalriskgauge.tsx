@@ -35,7 +35,7 @@ export default function NationalRiskGauge({ value, liveAlarms, regionsAtRisk }: 
     const W  = canvas.width;
     const H  = canvas.height;
     const cx = W / 2;
-    const cy = H * 0.85;
+    const cy = H * 0.88;
     const R  = W * 0.38;
 
     function draw(current: number) {
@@ -128,20 +128,20 @@ export default function NationalRiskGauge({ value, liveAlarms, regionsAtRisk }: 
       <canvas
         ref={canvasRef}
         width={200}
-        height={120}
-        className="w-full max-w-[220px]"
+        height={125}
+        className="w-full max-w-[200px]"
       />
 
       <div
         className="absolute font-mono text-2xl font-black tracking-wider"
-        style={{ color, bottom: 42, textShadow: `0 0 20px ${color}` }}
+        style={{ color, bottom: 50, fontSize: "1.25rem", textShadow: `0 0 20px ${color}` }}
       >
         {value}
         <span className="text-sm ml-0.5 opacity-70">%</span>
       </div>
 
       <div
-        className={`text-[9px] font-black tracking-[0.2em] uppercase mt-3 text-center px-2 py-0.5 rounded border ${
+        className={`text-[9px] font-black tracking-[0.2em] uppercase mt-2 text-center px-2 py-0.5 rounded border ${
           isCritical ? "animate-pulse" : ""
         }`}
         style={{

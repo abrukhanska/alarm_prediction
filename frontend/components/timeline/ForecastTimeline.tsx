@@ -137,14 +137,14 @@ export default function ForecastTimeline({
             >
               {weather && (
                 <div className={`mb-0.5 transition-opacity duration-200 ${isSelected ? "opacity-100" : "opacity-40"}`}>
-                  <WeatherIcon icon={weather.icon} size={14} />
+                  <WeatherIcon icon={weather.icon} size={16} />
                 </div>
               )}
               <motion.div
                 className="w-full rounded-sm relative overflow-hidden"
                 animate={{
-                  height:  28,
-                  opacity: isSelected ? 1 : prob > 0 ? 0.75 : 0.15,
+                  height:  20,
+                  opacity: isSelected ? 1 : prob > 0 ? 0.7 : 0.12,
                 }}
                 transition={{ duration: 0.15 }}
                 style={{
