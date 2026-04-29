@@ -137,7 +137,7 @@ export default function ForecastTimeline({
             >
               {weather && (
                 <div className={`mb-0.5 transition-opacity duration-200 ${isSelected ? "opacity-100" : "opacity-40"}`}>
-                  <WeatherIcon icon={weather.icon} size={10} />
+                  <WeatherIcon icon={weather.icon} size={14} />
                 </div>
               )}
               <motion.div

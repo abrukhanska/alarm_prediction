@@ -217,7 +217,8 @@ export default function RegionDrawer({
               </span>
             </div>
 
-            <ResponsiveContainer width="100%" height={160}>
+            <div style={{ width: "100%", height: 160 }}>
+            <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: -14, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.04)" />
                 <XAxis
@@ -285,6 +286,7 @@ export default function RegionDrawer({
                 />
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
 
             <div
               className="text-[8px] text-center opacity-40 mt-1"
@@ -310,7 +312,7 @@ export default function RegionDrawer({
                       color: "#ff6680",
                     }}
                   >
-                   <WeatherIcon icon={h.weather.icon} size={9} />
+                   <WeatherIcon icon={h.weather.icon} size={12} />
                     {h.hour.includes("T") ? h.hour.slice(11, 16) : h.hour}
                   </div>
                 ))}
