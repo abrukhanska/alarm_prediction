@@ -76,7 +76,7 @@ export default function Dashboard() {
     return (
       <div
         className="flex h-screen w-screen items-center justify-center"
-        style={{ background: "#050e1f", fontFamily: "'Share Tech Mono', monospace" }}
+        style={{ background: "#030712", fontFamily: "'Share Tech Mono', monospace" }}
       >
         <div className="flex flex-col items-center gap-4">
           <div
@@ -107,7 +107,7 @@ export default function Dashboard() {
     return (
       <div
         className="flex h-screen w-screen items-center justify-center"
-        style={{ background: "#050e1f", fontFamily: "'Share Tech Mono', monospace" }}
+        style={{ background: "#030712", fontFamily: "'Share Tech Mono', monospace" }}
       >
         <div
           className="rounded-xl p-6 text-center max-w-md"
@@ -147,7 +147,7 @@ export default function Dashboard() {
   return (
     <div
       className="relative flex flex-col h-screen w-screen overflow-hidden"
-      style={{ background: "#050e1f", color: "#e2e8f0" }}
+      style={{ background: "#030712", color: "#e2e8f0" }}
     >
       <div
         className="absolute inset-0 pointer-events-none z-0 opacity-[0.022]"
@@ -174,16 +174,8 @@ export default function Dashboard() {
       </div>
 
       <div className="relative z-10 flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-        {/* Gauge overlay — top-left corner above the map */}
-        <div
-          style={{
-            position: "absolute",
-            top: 12,
-            left: 16,
-            zIndex: 20,
-            pointerEvents: "none",
-          }}
-        >
+        {/* Gauge — top-left above map */}
+        <div style={{ position: "absolute", top: 4, left: 12, zIndex: 20, pointerEvents: "none" }}>
           <NationalRiskGauge
             value={global_metrics.national_risk_index ?? 0}
             liveAlarms={global_metrics.live_alarms_count ?? 0}
@@ -198,7 +190,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="relative z-20 flex-none px-4 pb-4 pt-0">
+      <div className="relative z-20 flex-none px-4 pb-2 pt-0">
         <ForecastTimeline
           forecast={forecast}
           selectedHour={selectedHour}

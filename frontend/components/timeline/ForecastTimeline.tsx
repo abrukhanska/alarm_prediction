@@ -82,7 +82,7 @@ export default function ForecastTimeline({
 
   return (
     <div
-      className="flex flex-col gap-2 px-4 py-3 rounded-xl border"
+      className="flex flex-col gap-1 px-3 py-2 rounded-xl border"
       style={{
         background:     "rgba(5, 10, 22, 0.85)",
         borderColor:    "rgba(0, 200, 255, 0.1)",
@@ -93,7 +93,7 @@ export default function ForecastTimeline({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="w-1 h-3 rounded-full bg-cyan-400 animate-pulse" />
-          <span className="text-[9px] font-black uppercase tracking-[0.25em]" style={{ color: "#4fc3f7" }}>
+          <span className="text-[8px] font-black uppercase tracking-[0.2em]" style={{ color: "#4fc3f7" }}>
             {selectedRegion
               ? selectedRegion.replace(" Oblast", "").replace("City of ", "").toUpperCase()
               : "NATIONAL 90th-PCT RISK"
@@ -111,7 +111,7 @@ export default function ForecastTimeline({
         <div className="flex items-center gap-3">
           {currentWeather && (
             <div className="flex items-center gap-1.5 text-[10px] font-mono" style={{ color: "#94a3b8" }}>
-              <WeatherIcon icon={currentWeather.icon} size={16} />
+              <WeatherIcon icon={currentWeather.icon} size={13} />
               <span>{currentWeather.temp}°</span>
               <span className="opacity-50">|</span>
               <span>💨 {currentWeather.wind} km/h</span>
@@ -123,7 +123,7 @@ export default function ForecastTimeline({
         </div>
       </div>
 
-      <div className="flex gap-[3px] items-end h-20">
+      <div className="flex gap-[3px] items-end h-16">
         {bars.map(({ prob, color, label, weather, isAlarm }, i) => {
           const isSelected = i === selectedHour;
           return (
@@ -137,14 +137,14 @@ export default function ForecastTimeline({
             >
               {weather && (
                 <div className={`mb-0.5 transition-opacity duration-200 ${isSelected ? "opacity-100" : "opacity-40"}`}>
-                  <WeatherIcon icon={weather.icon} size={22} />
+                  <WeatherIcon icon={weather.icon} size={20} />
                 </div>
               )}
               <motion.div
                 className="w-full rounded-sm relative overflow-hidden"
                 animate={{
-                  height:  14,
-                  opacity: isSelected ? 1 : prob > 0 ? 0.72 : 0.13,
+                  height: 16,
+                  opacity: isSelected ? 1 : prob > 0 ? 0.6 : 0.2,
                 }}
                 transition={{ duration: 0.15 }}
                 style={{
