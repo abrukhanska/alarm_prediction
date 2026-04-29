@@ -68,21 +68,21 @@ export default function UkraineMap({
                   <Geography
                     key={geo.rsmKey}
                     geography={geo}
-                    fill={hexToRgba(color, isSelected ? 0.85 : isLive ? 0.65 : prob > 0 ? 0.4 : 0.15)}
+                    fill={prob === 0 ? hexToRgba("#1d7a4a", isSelected ? 0.90 : 0.65) : hexToRgba(color, isSelected ? 0.85 : 0.50)}
                     stroke={
                       isLive
                         ? "#ff1a3d"
                         : isSelected
                         ? "#00e5ff"
-                        : "rgba(30,60,100,0.6)"
+                        : "rgba(120,170,210,0.28)"
                     }
-                    strokeWidth={isLive ? 1.8 : isSelected ? 2 : 0.5}
+                    strokeWidth={isLive ? 2.5 : isSelected ? 2.2 : 0.7}
                     className={isLive ? "live-alarm-region" : ""}
                     style={{
                       default: {
                         outline: "none",
                         transition: "all 0.35s ease",
-                        filter: isLive ? `drop-shadow(0 0 6px #ff1a3d)` : "none",
+                        filter: "none",
                       },
                       hover: {
                         outline: "none",
@@ -117,11 +117,11 @@ export default function UkraineMap({
                   <Marker key={`m-${slug}`} coordinates={markerData.coords}>
                     {isLive && (
                       <g style={{ pointerEvents: "none" }}>
-                        <circle r="8" fill="none" stroke="#ff1a3d" strokeWidth="1.5" opacity="0.8"
+                        <circle r="8" fill="none" stroke="#b91c2a" strokeWidth="1.5" opacity="0.8"
                           style={{ animation: "radarPing 1.8s ease-out infinite", transformBox: "fill-box", transformOrigin: "center" }} />
-                        <circle r="8" fill="none" stroke="#ff6b00" strokeWidth="1" opacity="0.5"
+                        <circle r="8" fill="none" stroke="#b84500" strokeWidth="1" opacity="0.5"
                           style={{ animation: "radarPing 1.8s ease-out infinite 0.6s", transformBox: "fill-box", transformOrigin: "center" }} />
-                        <circle r="4" fill="#ff1a3d" opacity="0.95"
+                        <circle r="4" fill="#b91c2a" opacity="0.95"
                           style={{ animation: "pulseCore 1.2s ease-in-out infinite" }} />
                       </g>
                     )}
@@ -132,7 +132,7 @@ export default function UkraineMap({
                         fontSize: slug === "kyiv_oblast" || slug === "kyiv" ? "6.5px" : "5.5px",
                         fontFamily: "'Share Tech Mono', monospace",
                         fontWeight: "bold",
-                        fill: isLive ? "#ff8888" : "rgba(255,255,255,0.55)",
+                        fill: isLive ? "#d96060" : "rgba(255,255,255,0.55)",
                         pointerEvents: "none",
                         letterSpacing: "0.05em",
                       }}
@@ -178,12 +178,12 @@ export default function UkraineMap({
                 {isLive && (
                   <span
                     className="inline-block w-1.5 h-1.5 rounded-full animate-pulse"
-                    style={{ background: "#ff1a3d" }}
+                    style={{ background: "#b91c2a" }}
                   />
                 )}
                 {tooltip.backendName.replace(" Oblast", "").replace("City of ", "")}
                 {isLive && (
-                  <span className="text-[9px] font-bold tracking-wider" style={{ color: "#ff1a3d" }}>
+                  <span className="text-[9px] font-bold tracking-wider" style={{ color: "#b91c2a" }}>
                     ● ALARM ACTIVE
                   </span>
                 )}
@@ -232,8 +232,8 @@ export default function UkraineMap({
           { label: "SAFE",     color: "#004d2e" },
           { label: "LOW",      color: "#66dd00" },
           { label: "MEDIUM",   color: "#ffc800" },
-          { label: "HIGH",     color: "#ff6b00" },
-          { label: "CRITICAL", color: "#ff1a3d" },
+          { label: "HIGH",     color: "#b84500" },
+          { label: "CRITICAL", color: "#b91c2a" },
         ].map(({ label, color }) => (
           <div key={label} className="flex items-center gap-2 mb-0.5">
             <div
