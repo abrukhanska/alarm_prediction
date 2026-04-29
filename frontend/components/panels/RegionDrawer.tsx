@@ -76,11 +76,11 @@ export default function RegionDrawer({
 
   const chartData = regionData.hourly_data.map((item) => ({
     hour: item.hour.includes("T") ? item.hour.slice(11, 16) : item.hour,
-    probability: item.probability,
-    wind: item.weather.wind,
-    alarm: item.alarm,
-    cloudcover: item.weather.cloudcover,
-    humidity: item.weather.humidity,
+    probability: item.probability ?? 0,
+    wind: item.weather?.wind ?? 0,
+    alarm: item.alarm ?? false,
+    cloudcover: item.weather?.cloudcover ?? 0,
+    humidity: item.weather?.humidity ?? 0,
   }));
 
   const alarmHours = regionData.hourly_data.filter((h) => h.alarm);
@@ -217,7 +217,8 @@ export default function RegionDrawer({
               </span>
             </div>
 
-            <ResponsiveContainer width="100%" height={160}>
+            <div style={{ width: "100%", height: 160 }}>
+            <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: -14, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.04)" />
                 <XAxis
@@ -255,7 +256,7 @@ export default function RegionDrawer({
                   strokeWidth={1}
                 />
 
-                <Bar yAxisId="wind" dataKey="wind" opacity={0.35} radius={[1, 1, 0, 0]}>
+                <Bar yAxisId="wind" dataKey="wind" opacity={0.35} radius={[1, 1, 0, 0]} minPointSize={2}>
                   {chartData.map((entry, i) => (
                     <Cell key={i} fill={i === selectedHour ? "#60a5fa" : "#1d4ed8"} />
                   ))}
@@ -285,6 +286,7 @@ export default function RegionDrawer({
                 />
               </ComposedChart>
             </ResponsiveContainer>
+            </div>
 
             <div
               className="text-[8px] text-center opacity-40 mt-1"
@@ -310,7 +312,7 @@ export default function RegionDrawer({
                       color: "#ff6680",
                     }}
                   >
-                   <WeatherIcon icon={h.weather.icon} size={9} />
+                   {h.weather?.icon && <WeatherIcon icon={h.weather.icon} size={9} />}
                     {h.hour.includes("T") ? h.hour.slice(11, 16) : h.hour}
                   </div>
                 ))}
