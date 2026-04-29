@@ -46,12 +46,10 @@ TARGET_COL = "alarm"
 N_CV_SPLITS = 3
 
 LEAKY_COLS = {
-    "region", "datetime_hour", TARGET_COL,
-    "n_regions_alarm", "n_regions_alarm_lag_2h",
-    "n_regions_alarm_lag_3h", "n_regions_alarm_momentum",
-    "alarm_lag_1h", "alarm_lag_2h", "alarm_lag_3h",
-    "alarm_lag_6h", "alarm_lag_12h", "alarm_lag_24h",
-    "alarms_last_24h",
+    "region",
+    "datetime_hour",
+    TARGET_COL,
+    "n_regions_alarm",
 }
 
 BEST_PARAMS_LIGHTGBM = {
