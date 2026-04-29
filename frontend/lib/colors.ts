@@ -1,6 +1,6 @@
 export const THREAT_COLORS: Record<string, string> = {
-  critical: "#e0193a",
-  high:     "#e05a00",
+  critical: "#b91c2a",
+  high:     "#b84500",
   medium:   "#d4a800",
   low:      "#4ab84a",
   safe:     "#1d7a4a",

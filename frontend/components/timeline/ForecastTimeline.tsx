@@ -170,7 +170,7 @@ export default function ForecastTimeline({
                 </span>
               )}
               {isAlarm && (
-                <div className="absolute -top-0.5 w-1 h-1 rounded-full" style={{ backgroundColor: "#ff1a3d", boxShadow: "0 0 4px #ff1a3d" }} />
+                <div className="absolute -top-0.5 w-1 h-1 rounded-full" style={{ backgroundColor: "#b91c2a", boxShadow: "0 0 4px #b91c2a" }} />
               )}
             </motion.div>
           );
@@ -185,9 +185,9 @@ export default function ForecastTimeline({
           whileTap={{ scale: 0.9 }}
           className="flex-none flex items-center justify-center w-7 h-7 rounded-full border transition-colors duration-200"
           style={{
-            borderColor: isPlaying ? "#ff1a3d" : "rgba(0,229,255,0.3)",
-            background:  isPlaying ? "rgba(255,26,61,0.1)" : "rgba(0,229,255,0.05)",
-            color:       isPlaying ? "#ff1a3d" : "#00e5ff",
+            borderColor: isPlaying ? "#b91c2a" : "rgba(0,229,255,0.3)",
+            background:  isPlaying ? "rgba(185,28,42,0.1)" : "rgba(0,229,255,0.05)",
+            color:       isPlaying ? "#b91c2a" : "#00e5ff",
           }}
         >
           {isPlaying ? (
@@ -240,12 +240,12 @@ export default function ForecastTimeline({
           whileTap={{ scale: 0.92 }}
           className={`flex-none px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-widest transition-all ${
             isLive
-              ? "bg-red-500/20 border border-red-500/40 text-red-400"
+              ? "bg-red-900/30 border border-red-800/50 text-red-600"
               : "bg-cyan-500/10 border border-cyan-500/20 text-cyan-600 hover:text-cyan-400 hover:bg-cyan-500/20 hover:border-cyan-500/40"
           }`}
         >
           {isLive && (
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-1 align-middle animate-pulse" />
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-800 mr-1 align-middle animate-pulse" />
           )}
           LIVE
         </motion.button>
@@ -253,9 +253,9 @@ export default function ForecastTimeline({
         <div className="flex items-center gap-1.5 text-[8px] font-mono opacity-40 ml-1">
           <div className="w-2 h-1 rounded-sm" style={{ background: "#004d2e" }} />
           <span style={{ color: "#64748b" }}>SAFE</span>
-          <div className="w-2 h-1 rounded-sm" style={{ background: "#ff6b00" }} />
+          <div className="w-2 h-1 rounded-sm" style={{ background: "#b84500" }} />
           <span style={{ color: "#64748b" }}>HIGH</span>
-          <div className="w-2 h-1 rounded-sm" style={{ background: "#ff1a3d" }} />
+          <div className="w-2 h-1 rounded-sm" style={{ background: "#b91c2a" }} />
           <span style={{ color: "#64748b" }}>CRIT</span>
         </div>
       </div>
