@@ -56,7 +56,7 @@ BEST_PARAMS_LIGHTGBM = {
     "colsample_bytree": 0.3,
     "learning_rate":    0.05,
     "num_leaves":       63,
-    "reg_lambda":       1.0,
+    "reg_lambda":       5.0,
     "objective":        "binary",
     "metric":           "auc",
     "n_estimators":     400,
@@ -68,7 +68,7 @@ BEST_PARAMS_LIGHTGBM = {
     "max_bin":          63,
 }
 
-_BOOTSTRAP_THRESHOLD = 0.572
+_BOOTSTRAP_THRESHOLD = 0.633
 
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
