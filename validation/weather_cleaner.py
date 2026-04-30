@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 import numpy as np
 import pandas as pd
+from datetime import date
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 HISTORICAL_DIR = PROJECT_ROOT / "data" / "raw" / "weather" / "historical"
