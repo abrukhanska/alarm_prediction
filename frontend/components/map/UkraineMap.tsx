@@ -71,7 +71,7 @@ export default function UkraineMap({
                     fill={prob === 0 ? hexToRgba("#1d7a4a", isSelected ? 0.90 : 0.65) : hexToRgba(color, isSelected ? 0.85 : 0.50)}
                     stroke={
                       isLive
-                        ? "rgba(160,30,45,0.55)"
+                        ? "#ff1a3d"
                         : isSelected
                         ? "#00e5ff"
                         : "rgba(120,170,210,0.28)"
