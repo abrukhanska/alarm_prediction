@@ -12,7 +12,7 @@
 <img width="1600" height="760" alt="aegis" src="https://github.com/user-attachments/assets/86cd847f-568e-45f8-aa53-dee638fbb16c" />
 
 
-> **Demo video:** [Watch on YouTube](https://youtu.be/z88J31f0_rM) · **Live repo:** [github.com/abrukhanska/alarm_prediction](https://github.com/abrukhanska/alarm_prediction)
+> **Live repo:** [github.com/abrukhanska/alarm_prediction](https://github.com/abrukhanska/alarm_prediction)
 
 ---
 
@@ -59,7 +59,7 @@ AEGIS operates as a fully automated pipeline running on AWS EC2:
 │                     NLP & ETL PIPELINE                      │
 │  TF-IDF (500 feat) · D+1 shift · Lag features · OHE         │
 └───────────────────────┬─────────────────────────────────────┘
-                        │  190k-row Oblast-Hour feature matrix
+                        │  Oblast-Hour feature matrix
                         ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                   ML MODEL (LightGBM)                       │
