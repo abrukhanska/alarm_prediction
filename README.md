@@ -437,7 +437,6 @@ PYTHON_ENV=venv/bin/python
 * **Model Training & Selection** — Evaluated 5 different architectures using a 5-fold `TimeSeriesSplit` to preserve temporal integrity:
   * **Baseline Models:** `Linear Regression` (MaxAbsScaler baseline) and `Logistic Regression` (L1/L2 GridSearch) to establish performance floors.
   * **Advanced GBDT Ensemble:** `LightGBM` (Leaf-wise growth), `XGBoost` (Level-wise growth with L1+L2 leaf weights), and `HistGradientBoosting` (Native NaN handling).
-  * **Optimization Pipeline:** All models integrated into `Scikit-learn Pipelines` with `StandardScaler` to prevent data leakage and `GridSearchCV` for automated hyperparameter tuning.
   * **Decision Logic:** Tuned for **High-Recall** (0.4xAUC + 0.4xRecall + 0.2xF1) using an optimal probability threshold to prioritize civil safety by minimizing missed alarms (False Negatives).
 - **Infrastructure** — AWS EC2 Cron architecture, ISW sources scraper.
 - **YouTube video**.
