@@ -194,7 +194,7 @@ python scrapers/alarm_client.py
 python scrapers/gur_scraper.py --backfill
 python scrapers/gur_scraper.py --daily
 
-# Telegram tactical signals (last 24 hours, 8 channels)
+# Telegram tactical signals (last 24 hours, 6 channels)
 python scrapers/telegram_scraper.py --hours 24
 ```
 
