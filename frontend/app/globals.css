@@ -10,10 +10,10 @@
 }
 
 :root {
-  --bg:          #030712;
-  --surface:     #07101e;
-  --surface-2:   #0a1525;
-  --border:      rgba(0, 229, 255, 0.1);
+  --bg:          #050e1f;
+  --surface:     #091422;
+  --surface-2:   #0d1a2e;
+  --border:      rgba(0, 229, 255, 0.15);
   --border-dim:  rgba(255, 255, 255, 0.06);
   --cyan:        #00e5ff;
   --red:         #ff1a3d;
@@ -21,7 +21,7 @@
   --amber:       #ffc800;
   --green:       #66dd00;
   --text:        #e2e8f0;
-  --text-dim:    #475569;
+  --text-dim:    #5a7a9a;
   --text-muted:  #1e293b;
   --font-mono:   'IBM Plex Mono', monospace;
   --font-display:'Barlow Condensed', sans-serif;
@@ -53,16 +53,16 @@ input[type="range"] {
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--cyan);
   box-shadow: 0 0 8px var(--cyan);
   cursor: pointer;
 }
 input[type="range"]::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: var(--cyan);
   box-shadow: 0 0 8px var(--cyan);

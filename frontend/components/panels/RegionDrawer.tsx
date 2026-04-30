@@ -74,17 +74,14 @@ export default function RegionDrawer({
   const isLive = regionData.is_live_alarm_now;
   const color = probToColor(currentProb);
 
-  const now = new Date();
-  const chartData = regionData.hourly_data
-    .filter((item) => new Date(item.hour) >= now)
-    .map((item) => ({
-      hour: item.hour.includes("T") ? item.hour.slice(11, 16) : item.hour,
-      probability: item.probability ?? 0,
-      wind: item.weather?.wind ?? 0,
-      alarm: item.alarm ?? false,
-      cloudcover: item.weather?.cloudcover ?? 0,
-      humidity: item.weather?.humidity ?? 0,
-    }));
+  const chartData = regionData.hourly_data.map((item) => ({
+    hour: item.hour.includes("T") ? item.hour.slice(11, 16) : item.hour,
+    probability: item.probability ?? 0,
+    wind: item.weather?.wind ?? 0,
+    alarm: item.alarm ?? false,
+    cloudcover: item.weather?.cloudcover ?? 0,
+    humidity: item.weather?.humidity ?? 0,
+  }));
 
   const alarmHours = regionData.hourly_data.filter((h) => h.alarm);
 

@@ -4,6 +4,7 @@ import type { ForecastResponse, RegionForecast } from "@/lib/types";
 import { fetchForecast } from "@/lib/api";
 
 import Header from "./Header";
+import NationalRiskGauge from "@/components/gauge/Nationalriskgauge";
 import UkraineMap from "@/components/map/UkraineMap";
 import ForecastTimeline from "@/components/timeline/ForecastTimeline";
 import RegionDrawer from "@/components/panels/RegionDrawer";
@@ -172,7 +173,15 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="relative z-10 flex-1 overflow-hidden">
+      <div className="relative z-10 flex-1 overflow-hidden" style={{ minHeight: 0 }}>
+        {/* Gauge — top-left above map */}
+        <div style={{ position: "absolute", top: 4, left: 12, zIndex: 20, pointerEvents: "none" }}>
+          <NationalRiskGauge
+            value={global_metrics.national_risk_index ?? 0}
+            liveAlarms={global_metrics.live_alarms_count ?? 0}
+            regionsAtRisk={global_metrics.total_regions_at_risk ?? 0}
+          />
+        </div>
         <UkraineMap
           regions={regions}
           selectedHour={selectedHour}
@@ -181,7 +190,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="relative z-20 flex-none px-4 pb-4 pt-0">
+      <div className="relative z-20 flex-none px-4 pb-2 pt-0">
         <ForecastTimeline
           forecast={forecast}
           selectedHour={selectedHour}
