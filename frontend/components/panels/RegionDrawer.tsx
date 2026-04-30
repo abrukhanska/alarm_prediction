@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ComposedChart,
@@ -53,6 +53,32 @@ export default function RegionDrawer({
 }: RegionDrawerProps) {
   const isOpen = !!regionName && !!regionData;
 
+  // FIX: Track chart container width to give ResponsiveContainer explicit dimensions
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    // Small delay to let the drawer animation settle before measuring
+    const timer = setTimeout(() => {
+      if (chartContainerRef.current) {
+        setChartWidth(chartContainerRef.current.offsetWidth);
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [isOpen, regionName]);
+
+  // Also observe resize (e.g. orientation change on mobile)
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w > 0) setChartWidth(w);
+    });
+    ro.observe(chartContainerRef.current);
+    return () => ro.disconnect();
+  }, [isOpen]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -105,8 +131,8 @@ export default function RegionDrawer({
         transition={{ type: "spring", damping: 28, stiffness: 220 }}
         className="fixed right-0 top-0 bottom-0 z-50 overflow-y-auto"
         style={{
-          width: 380,
-          maxWidth: "94vw",
+          // FIX: Use vw-based width so it fits phones properly
+          width: "min(380px, 100vw)",
           background: "rgba(4, 8, 18, 0.97)",
           borderLeft: `1px solid ${hexToRgba(color, 0.3)}`,
           boxShadow: `-10px 0 40px ${hexToRgba(color, 0.08)}`,
@@ -217,75 +243,84 @@ export default function RegionDrawer({
               </span>
             </div>
 
-            <div style={{ width: "100%", height: 160 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: -14, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.04)" />
-                <XAxis
-                  dataKey="hour"
-                  tick={{ fontSize: 8, fill: "#475569", fontFamily: "'Share Tech Mono', monospace" }}
-                  tickLine={false}
-                  axisLine={false}
-                  interval={3}
-                />
-                <YAxis
-                  yAxisId="prob"
-                  domain={[0, 100]}
-                  tick={{ fontSize: 8, fill: "#ef4444", fontFamily: "'Share Tech Mono', monospace" }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => `${v}%`}
-                  width={28}
-                />
-                <YAxis
-                  yAxisId="wind"
-                  orientation="right"
-                  domain={[0, "auto"]}
-                  tick={{ fontSize: 8, fill: "#3b82f6", fontFamily: "'Share Tech Mono', monospace" }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => `${v}`}
-                  width={22}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <ReferenceLine
-                  yAxisId="prob"
-                  x={chartData[selectedHour]?.hour}
-                  stroke="rgba(0,229,255,0.5)"
-                  strokeDasharray="3 3"
-                  strokeWidth={1}
-                />
-
-                <Bar yAxisId="wind" dataKey="wind" opacity={0.35} radius={[1, 1, 0, 0]} minPointSize={2}>
-                  {chartData.map((entry, i) => (
-                    <Cell key={i} fill={i === selectedHour ? "#60a5fa" : "#1d4ed8"} />
-                  ))}
-                </Bar>
-
-                <Line
-                  yAxisId="prob"
-                  type="monotone"
-                  dataKey="probability"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  dot={(props) => {
-                    const { cx, cy, index, payload } = props;
-                    if (!payload.alarm && index !== selectedHour) return <g key={index} />;
-                    return (
-                      <circle
-                        key={index}
-                        cx={cx}
-                        cy={cy}
-                        r={index === selectedHour ? 4 : 3}
-                        fill={index === selectedHour ? "#00e5ff" : "#ff1a3d"}
-                        stroke="none"
-                      />
-                    );
-                  }}
-                  activeDot={{ r: 5, fill: "#ef4444", stroke: "#ff1a3d" }}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
+            {/* FIX: Use ref to measure width, then pass explicit width to chart */}
+            <div ref={chartContainerRef} style={{ width: "100%", height: 160 }}>
+              {chartWidth > 0 ? (
+                <ComposedChart
+                  width={chartWidth}
+                  height={160}
+                  data={chartData}
+                  margin={{ top: 4, right: 8, left: -14, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="2 4" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis
+                    dataKey="hour"
+                    tick={{ fontSize: 8, fill: "#475569", fontFamily: "'Share Tech Mono', monospace" }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={3}
+                  />
+                  <YAxis
+                    yAxisId="prob"
+                    domain={[0, 100]}
+                    tick={{ fontSize: 8, fill: "#ef4444", fontFamily: "'Share Tech Mono', monospace" }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => `${v}%`}
+                    width={28}
+                  />
+                  <YAxis
+                    yAxisId="wind"
+                    orientation="right"
+                    domain={[0, "auto"]}
+                    tick={{ fontSize: 8, fill: "#3b82f6", fontFamily: "'Share Tech Mono', monospace" }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => `${v}`}
+                    width={22}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <ReferenceLine
+                    yAxisId="prob"
+                    x={chartData[selectedHour]?.hour}
+                    stroke="rgba(0,229,255,0.5)"
+                    strokeDasharray="3 3"
+                    strokeWidth={1}
+                  />
+                  <Bar yAxisId="wind" dataKey="wind" opacity={0.35} radius={[1, 1, 0, 0]} minPointSize={2}>
+                    {chartData.map((entry, i) => (
+                      <Cell key={i} fill={i === selectedHour ? "#60a5fa" : "#1d4ed8"} />
+                    ))}
+                  </Bar>
+                  <Line
+                    yAxisId="prob"
+                    type="monotone"
+                    dataKey="probability"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    dot={(props) => {
+                      const { cx, cy, index, payload } = props;
+                      if (!payload.alarm && index !== selectedHour) return <g key={index} />;
+                      return (
+                        <circle
+                          key={index}
+                          cx={cx}
+                          cy={cy}
+                          r={index === selectedHour ? 4 : 3}
+                          fill={index === selectedHour ? "#00e5ff" : "#ff1a3d"}
+                          stroke="none"
+                        />
+                      );
+                    }}
+                    activeDot={{ r: 5, fill: "#ef4444", stroke: "#ff1a3d" }}
+                  />
+                </ComposedChart>
+              ) : (
+                // Placeholder while measuring
+                <div style={{ width: "100%", height: 160, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ color: "#334155", fontSize: 10 }}>loading chart…</span>
+                </div>
+              )}
             </div>
 
             <div

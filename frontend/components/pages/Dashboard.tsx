@@ -149,6 +149,7 @@ export default function Dashboard() {
       className="relative flex flex-col h-screen w-screen overflow-hidden"
       style={{ background: "#030712", color: "#e2e8f0" }}
     >
+      {/* Background grid */}
       <div
         className="absolute inset-0 pointer-events-none z-0 opacity-[0.022]"
         style={{
@@ -174,8 +175,19 @@ export default function Dashboard() {
       </div>
 
       <div className="relative z-10 flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-        {/* Gauge — top-left above map */}
-        <div style={{ position: "absolute", top: 4, left: 12, zIndex: 20, pointerEvents: "none" }}>
+        {/* FIX: Gauge — responsive positioning, hidden on very small screens or moved */}
+        <div
+          style={{
+            position: "absolute",
+            top: 4,
+            left: 12,
+            zIndex: 20,
+            pointerEvents: "none",
+            // On mobile the gauge sits on top of map — keep it but scale down
+            transformOrigin: "top left",
+          }}
+          className="scale-75 sm:scale-90 md:scale-100"
+        >
           <NationalRiskGauge
             value={global_metrics.national_risk_index ?? 0}
             liveAlarms={global_metrics.live_alarms_count ?? 0}
@@ -190,7 +202,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="relative z-20 flex-none px-4 pb-2 pt-0">
+      <div className="relative z-20 flex-none px-2 sm:px-4 pb-2 pt-0">
         <ForecastTimeline
           forecast={forecast}
           selectedHour={selectedHour}
