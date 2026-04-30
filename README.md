@@ -484,7 +484,6 @@ PYTHON_ENV=venv/bin/python
 |----------|------|
 | **Live Dashboard** | [aegis-ukraine-alert-forecast.vercel.app](https://aegis-ukraine-alert-forecast.vercel.app) |
 | **GitHub Repository**| [github.com/abrukhanska/alarm_prediction](https://github.com/abrukhanska/alarm_prediction) |
-| **Video Demo** | [Watch on YouTube](https://youtu.be/z88J31f0_rM) |
+| **Video** | [Watch on YouTube](https://youtu.be/z88J31f0_rM) |
 | **Google Drive** | [Project Data & Docs Folder](https://drive.google.com/drive/folders/1B8GYn1JL5meLz7me79VUDsR2iXmvvB1-?usp=sharing) |
-| **Production API Docs** | [Swagger UI (Live)](http://13.63.201.169/docs) |
 | **Local API Docs** | `http://localhost:8000/docs` |
