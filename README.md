@@ -284,7 +284,7 @@ All endpoints are documented interactively at `/docs` (Swagger UI) when the serv
 | `POST` | `/api/update-forecast` | Manually trigger `predict_24h.py` |
 | `POST` | `/api/admin/retrain` | Trigger model retraining (MLOps) |
 
-A Postman collection covering all endpoints is available at [`postman_collection.json`](postman_collection.json).
+A Postman collection covering all endpoints is available at [`AEGIS API — All Endpoints.postman_collection.json`](AEGIS API — All Endpoints.postman_collection.json).
 
 ---
 
