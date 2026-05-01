@@ -1,0 +1,836 @@
+{
+  "info": {
+    "_postman_id": "5a95c435-2e01-47f7-a025-bfebc8d8d5d1",
+    "name": "AEGIS API — All Endpoints",
+    "description": "Air alarm prediction system for Ukraine (Team 4). Base URL: http://localhost:8000. Import this collection into Postman and set the {{base_url}} variable to your server address.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "45162426"
+  },
+  "item": [
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "GET /api/health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            },
+            "description": "Health check. Returns server status, ML lock state, latest.json age, live alarm feed status, and weather status."
+          },
+          "response": [
+            {
+              "name": "200 OK — Healthy",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/health",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "health"
+                  ]
+                },
+                "description": "Health check. Returns server status, ML lock state, latest.json age, live alarm feed status, and weather status."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"status\": \"ok\",\n  \"timestamp\": \"2025-01-01T12:00:00+00:00\",\n  \"ml_server_busy\": false,\n  \"latest_json_exists\": true,\n  \"latest_json_age_s\": 3600.5,\n  \"live_state_ok\": true,\n  \"live_alarms_count\": 3,\n  \"weather_today_ok\": true,\n  \"weather_today_generated_at\": \"2025-01-01T06:00:00+00:00\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET / (Root)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                ""
+              ]
+            },
+            "description": "Root endpoint — returns API version and endpoint list."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /docs (Swagger UI)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/docs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "docs"
+              ]
+            },
+            "description": "Interactive Swagger UI — open in browser, not Postman."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Forecast (Primary)",
+      "item": [
+        {
+          "name": "GET /api/forecast",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/forecast",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "forecast"
+              ]
+            },
+            "description": "🔑 PRIMARY ENDPOINT. Returns 24h rolling forecast for ALL 25 regions. Includes hourly alarm probability, weather (temp/wind/precip/icon), risk level, and live alarm status per region.\n\nRequires latest.json to exist (run POST /api/update-forecast first if you get 503)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/forecast",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "forecast"
+                  ]
+                },
+                "description": "🔑 PRIMARY ENDPOINT. Returns 24h rolling forecast for ALL 25 regions. Includes hourly alarm probability, weather (temp/wind/precip/icon), risk level, and live alarm status per region.\n\nRequires latest.json to exist (run POST /api/update-forecast first if you get 503)."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"global_metrics\": {\n    \"national_risk_index\": 42,\n    \"last_model_update\": \"2025-01-01T00:00:00\",\n    \"prediction_generated_at\": \"2025-01-01T12:00:00\",\n    \"forecast_hours\": 24,\n    \"total_regions_at_risk\": 8,\n    \"live_alarms_count\": 3,\n    \"weather_live\": true\n  },\n  \"regions\": {\n    \"Kharkiv Oblast\": {\n      \"is_live_alarm_now\": true,\n      \"risk_level\": \"RED\",\n      \"max_probability\": 0.87,\n      \"current_temp\": 12.0,\n      \"hourly_data\": [\n        {\n          \"hour\": \"2025-01-01T13:00\",\n          \"probability\": 87,\n          \"alarm\": true,\n          \"weather\": { \"temp\": \"+12\", \"wind\": 15, \"cloudcover\": 80, \"humidity\": 65, \"precip\": 0.3, \"icon\": \"cloud\" }\n        }\n      ]\n    }\n  }\n}"
+            },
+            {
+              "name": "503 — No predictions yet",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/forecast",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "forecast"
+                  ]
+                },
+                "description": "🔑 PRIMARY ENDPOINT. Returns 24h rolling forecast for ALL 25 regions. Includes hourly alarm probability, weather (temp/wind/precip/icon), risk level, and live alarm status per region.\n\nRequires latest.json to exist (run POST /api/update-forecast first if you get 503)."
+              },
+              "status": "Service Unavailable",
+              "code": 503,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"detail\": \"Predictions not yet available. POST /api/update-forecast and wait ~30s.\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Predictions",
+      "item": [
+        {
+          "name": "GET /api/predict/all",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/predict/all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "predict",
+                "all"
+              ]
+            },
+            "description": "Returns alarm prediction data for all 25 regions. Each region includes threat_level, probability at 1h/3h/6h/12h, and a boolean forecast dict."
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/predict/{region} — kharkiv",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/predict/{{region}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "predict",
+                "{{region}}"
+              ]
+            },
+            "description": "Per-region prediction. The {region} param is a slug (lowercase, underscores).\n\nValid slugs: kharkiv, donetsk, zaporizhzhia, sumy, kherson, kyiv, kyiv_oblast, dnipropetrovsk, luhansk, mykolaiv, odesa, lviv, poltava, chernihiv, cherkasy, vinnytsia, zhytomyr, rivne, volyn, ivano_frankivsk, ternopil, khmelnytskyi, chernivtsi, zakarpattia, kirovohrad"
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/predict/{{region}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "predict",
+                    "{{region}}"
+                  ]
+                },
+                "description": "Per-region prediction. The {region} param is a slug (lowercase, underscores).\n\nValid slugs: kharkiv, donetsk, zaporizhzhia, sumy, kherson, kyiv, kyiv_oblast, dnipropetrovsk, luhansk, mykolaiv, odesa, lviv, poltava, chernihiv, cherkasy, vinnytsia, zhytomyr, rivne, volyn, ivano_frankivsk, ternopil, khmelnytskyi, chernivtsi, zakarpattia, kirovohrad"
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"region\": \"kharkiv\",\n  \"region_name\": \"Kharkiv Oblast\",\n  \"threat_level\": \"High\",\n  \"probability_1h\": 0.82,\n  \"probability_3h\": 0.74,\n  \"probability_6h\": 0.65,\n  \"probability_12h\": 0.50,\n  \"updated_at\": \"2025-01-01T12:00:00+00:00\",\n  \"forecast\": { \"2025-01-01T13:00\": true, \"2025-01-01T14:00\": true }\n}"
+            },
+            {
+              "name": "404 — Region not found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/predict/{{region}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "predict",
+                    "{{region}}"
+                  ]
+                },
+                "description": "Per-region prediction. The {region} param is a slug (lowercase, underscores).\n\nValid slugs: kharkiv, donetsk, zaporizhzhia, sumy, kherson, kyiv, kyiv_oblast, dnipropetrovsk, luhansk, mykolaiv, odesa, lviv, poltava, chernihiv, cherkasy, vinnytsia, zhytomyr, rivne, volyn, ivano_frankivsk, ternopil, khmelnytskyi, chernivtsi, zakarpattia, kirovohrad"
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"detail\": \"Region 'xyz' not found. Available: ['cherkasy', 'chernihiv', ...]\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET /api/predict/{region} — kyiv",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/predict/kyiv",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "predict",
+                "kyiv"
+              ]
+            },
+            "description": "Prediction for Kyiv city (slug: kyiv). For Kyiv Oblast use: kyiv_oblast"
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/predict/{region} — lviv",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/predict/lviv",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "predict",
+                "lviv"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/predict/{region} — odesa",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/predict/odesa",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "predict",
+                "odesa"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Live Alarms",
+      "item": [
+        {
+          "name": "GET /api/current-alarms",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/current-alarms",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "current-alarms"
+              ]
+            },
+            "description": "Live alarm status from WebSocket feed. Returns active alarm count, total regions, and per-region status (active boolean, threat_level, since timestamp, type)."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/current-alarms",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "current-alarms"
+                  ]
+                },
+                "description": "Live alarm status from WebSocket feed. Returns active alarm count, total regions, and per-region status (active boolean, threat_level, since timestamp, type)."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"timestamp\": \"2025-01-01T12:00:00+00:00\",\n  \"active_count\": 3,\n  \"total_regions\": 25,\n  \"regions\": [\n    {\n      \"id\": \"kharkiv\",\n      \"name\": \"Kharkiv Oblast\",\n      \"active\": true,\n      \"type\": \"AIR\",\n      \"since\": \"2025-01-01T11:30:00+00:00\",\n      \"threat_level\": \"High\",\n      \"probability\": 0.82\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Weather",
+      "item": [
+        {
+          "name": "GET /api/weather/{region} — kharkiv",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/weather/{{region}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "weather",
+                "{{region}}"
+              ]
+            },
+            "description": "Current weather for a region by slug. Returns temp, humidity, windspeed, winddir, visibility, cloudcover, pressure, conditions, precip."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/weather/{{region}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "weather",
+                    "{{region}}"
+                  ]
+                },
+                "description": "Current weather for a region by slug. Returns temp, humidity, windspeed, winddir, visibility, cloudcover, pressure, conditions, precip."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"region\": \"Kharkiv Oblast\",\n  \"temp\": 12.5,\n  \"humidity\": 68.0,\n  \"windspeed\": 14.0,\n  \"winddir\": 220.0,\n  \"visibility\": 10.0,\n  \"cloudcover\": 75.0,\n  \"pressure\": 1012.0,\n  \"conditions\": \"Partially cloudy\",\n  \"precip\": 0.2\n}"
+            },
+            {
+              "name": "404 — Not found",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/weather/{{region}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "weather",
+                    "{{region}}"
+                  ]
+                },
+                "description": "Current weather for a region by slug. Returns temp, humidity, windspeed, winddir, visibility, cloudcover, pressure, conditions, precip."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{ \"detail\": \"Region 'xyz' not found\" }"
+            }
+          ]
+        },
+        {
+          "name": "GET /api/weather/{region} — kyiv",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/weather/kyiv",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "weather",
+                "kyiv"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "GET /api/weather/{region} — odesa",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/weather/odesa",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "weather",
+                "odesa"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Statistics",
+      "item": [
+        {
+          "name": "GET /api/stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/stats",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "stats"
+              ]
+            },
+            "description": "Dashboard summary statistics: active_alarms_count, total_regions, avg_threat_level, most_threatened_region, total_alarms_today, total_duration_today_hours."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "originalRequest": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/stats",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "stats"
+                  ]
+                },
+                "description": "Dashboard summary statistics: active_alarms_count, total_regions, avg_threat_level, most_threatened_region, total_alarms_today, total_duration_today_hours."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"active_alarms_count\": 3,\n  \"total_regions\": 25,\n  \"avg_threat_level\": 0.45,\n  \"most_threatened_region\": \"Kharkiv Oblast\",\n  \"total_alarms_today\": 12,\n  \"total_duration_today_hours\": 8.5\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Admin / MLOps",
+      "item": [
+        {
+          "name": "POST /api/update-forecast",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/update-forecast",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "update-forecast"
+              ]
+            },
+            "description": "Manually triggers predict_24h.py in the background. No request body needed.\n\nReturns immediately with status 'accepted'. Wait ~30 seconds, then GET /api/forecast.\n\nReturns 429 if an ML job is already running."
+          },
+          "response": [
+            {
+              "name": "200 OK — Accepted",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/update-forecast",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "update-forecast"
+                  ]
+                },
+                "description": "Manually triggers predict_24h.py in the background. No request body needed.\n\nReturns immediately with status 'accepted'. Wait ~30 seconds, then GET /api/forecast.\n\nReturns 429 if an ML job is already running."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"status\": \"accepted\",\n  \"message\": \"Prediction update started in background. Server locked.\",\n  \"timestamp\": \"2025-01-01T12:00:00+00:00\",\n  \"check_at\": \"GET /api/forecast (available in ~30s)\"\n}"
+            },
+            {
+              "name": "429 — ML busy",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/update-forecast",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "update-forecast"
+                  ]
+                },
+                "description": "Manually triggers predict_24h.py in the background. No request body needed.\n\nReturns immediately with status 'accepted'. Wait ~30 seconds, then GET /api/forecast.\n\nReturns 429 if an ML job is already running."
+              },
+              "status": "Too Many Requests",
+              "code": 429,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"detail\": \"Сервер зараз виконує важкий ML-процес...\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "POST /api/admin/retrain",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/admin/retrain",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "retrain"
+              ]
+            },
+            "description": "Triggers full model retraining (MLOps pipeline) with A/B validation (--validation-days 7). Runs retrain.py in background.\n\nNo request body needed. Returns 404 if retrain.py script is missing, 429 if ML is busy."
+          },
+          "response": [
+            {
+              "name": "200 OK — Started",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/retrain",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "retrain"
+                  ]
+                },
+                "description": "Triggers full model retraining (MLOps pipeline) with A/B validation (--validation-days 7). Runs retrain.py in background.\n\nNo request body needed. Returns 404 if retrain.py script is missing, 429 if ML is busy."
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{\n  \"status\": \"CI/CD Pipeline started\",\n  \"message\": \"A/B validation and model retrain launched in background. Server is locked for other ML tasks.\",\n  \"timestamp\": \"2025-01-01T12:00:00+00:00\",\n  \"script\": \"/path/to/models/retrain.py\"\n}"
+            },
+            {
+              "name": "404 — Script missing",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/retrain",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "retrain"
+                  ]
+                },
+                "description": "Triggers full model retraining (MLOps pipeline) with A/B validation (--validation-days 7). Runs retrain.py in background.\n\nNo request body needed. Returns 404 if retrain.py script is missing, 429 if ML is busy."
+              },
+              "status": "Not Found",
+              "code": 404,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{ \"detail\": \"Retrain script not found: /path/to/retrain.py\" }"
+            },
+            {
+              "name": "429 — ML busy",
+              "originalRequest": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/retrain",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "retrain"
+                  ]
+                },
+                "description": "Triggers full model retraining (MLOps pipeline) with A/B validation (--validation-days 7). Runs retrain.py in background.\n\nNo request body needed. Returns 404 if retrain.py script is missing, 429 if ML is busy."
+              },
+              "status": "Too Many Requests",
+              "code": 429,
+              "_postman_previewlanguage": "Text",
+              "header": [],
+              "cookie": [],
+              "body": "{ \"detail\": \"Сервер зараз виконує обробку даних або інший ретрейн...\" }"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "region",
+      "value": "kharkiv"
+    }
+  ]
+}
